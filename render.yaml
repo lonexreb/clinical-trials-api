@@ -1,0 +1,23 @@
+databases:
+  - name: clinical-trials-db
+    plan: free
+    databaseName: clinical_trials
+    user: clinical_trials_user
+
+services:
+  - type: web
+    name: clinical-trials-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clinical-trials-db
+          property: connectionString
+      - key: CT_GOV_BASE_URL
+        value: https://clinicaltrials.gov/api/v2/studies
+      - key: BATCH_SIZE
+        value: "500"
+      - key: LOG_LEVEL
+        value: INFO
