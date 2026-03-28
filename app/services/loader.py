@@ -3,7 +3,7 @@
 import logging
 
 from sqlalchemy import delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.trial import Trial
 from app.schemas.trial import TrialCreate
@@ -64,8 +64,13 @@ async def load_trials(
     session: AsyncSession,
     trials: list[TrialCreate],
     batch_size: int = 500,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> tuple[int, int]:
-    """Load trials in batches. Returns (total_loaded, total_errors)."""
+    """Load trials in batches. Returns (total_loaded, total_errors).
+
+    If session_factory is provided, creates a fresh session per batch
+    to avoid stale connections on hosted databases with connection limits.
+    """
     total_loaded = 0
     total_errors = 0
 
@@ -73,7 +78,11 @@ async def load_trials(
         batch = trials[i : i + batch_size]
         batch_num = i // batch_size + 1
         try:
-            count = await upsert_trials_batch(session, batch)
+            if session_factory is not None:
+                async with session_factory() as batch_session:
+                    count = await upsert_trials_batch(batch_session, batch)
+            else:
+                count = await upsert_trials_batch(session, batch)
             total_loaded += count
             logger.info("Batch %d: loaded %d trials", batch_num, count)
         except Exception:

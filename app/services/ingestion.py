@@ -150,7 +150,11 @@ async def run_full_ingestion(
     log_ingestion_errors(parse_errors)
 
     # Load into database
-    total_loaded, load_errors = await load_trials(session, valid_trials, batch_size=settings.batch_size)
+    from app.db.session import session_factory as sf
+
+    total_loaded, load_errors = await load_trials(
+        session, valid_trials, batch_size=settings.batch_size, session_factory=sf
+    )
     logger.info("Loaded %d trials, %d load errors", total_loaded, load_errors)
 
     return total_loaded, len(parse_errors), load_errors

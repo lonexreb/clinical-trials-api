@@ -2,7 +2,7 @@
 
 import csv
 import io
-from collections.abc import AsyncIterator
+from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -38,29 +38,30 @@ async def export_trials(
     session: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export all trials as NDJSON or CSV streaming response."""
-    result = await session.stream_scalars(select(Trial))
+    result = await session.scalars(select(Trial))
+    trials = list(result.all())
 
     if format == "csv":
         return StreamingResponse(
-            _generate_csv(result),
+            _generate_csv(trials),
             media_type="text/csv",
             headers={"Content-Disposition": "attachment; filename=trials.csv"},
         )
     else:
         return StreamingResponse(
-            _generate_ndjson(result),
+            _generate_ndjson(trials),
             media_type="application/x-ndjson",
         )
 
 
-async def _generate_ndjson(stream: AsyncIterator[Trial]) -> AsyncIterator[str]:
+def _generate_ndjson(trials: list[Trial]) -> Iterator[str]:
     """Generate NDJSON lines from trial records."""
-    async for trial in stream:
+    for trial in trials:
         row = TrialResponse.model_validate(trial)
         yield row.model_dump_json() + "\n"
 
 
-async def _generate_csv(stream: AsyncIterator[Trial]) -> AsyncIterator[str]:
+def _generate_csv(trials: list[Trial]) -> Iterator[str]:
     """Generate CSV rows from trial records."""
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=EXPORT_FIELDS)
@@ -69,7 +70,7 @@ async def _generate_csv(stream: AsyncIterator[Trial]) -> AsyncIterator[str]:
     output.truncate(0)
     output.seek(0)
 
-    async for trial in stream:
+    for trial in trials:
         row = TrialResponse.model_validate(trial)
         row_dict = {
             k: str(getattr(row, k, "")) if getattr(row, k, None) is not None else ""
