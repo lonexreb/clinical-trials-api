@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.db.session import get_db
 from app.models.trial import Trial
@@ -38,7 +39,8 @@ async def export_trials(
     session: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Export all trials as NDJSON or CSV streaming response."""
-    result = await session.scalars(select(Trial))
+    # Exclude raw_data (large JSONB) since TrialResponse doesn't use it
+    result = await session.scalars(select(Trial).options(defer(Trial.raw_data)))
     trials = list(result.all())
 
     if format == "csv":
