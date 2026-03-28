@@ -202,6 +202,14 @@ async def trigger_ingestion(
     }
 
 
+async def _run_all_shards(job_ids: list[str], filters: list[str], max_pages: int | None) -> None:
+    """Run all shards concurrently (semaphore limits to 3 at a time)."""
+    await asyncio.gather(*(
+        _run_ingestion_job(job_id, None, filt, max_pages)
+        for job_id, filt in zip(job_ids, filters)
+    ))
+
+
 @router.post("/ingest/all")
 async def trigger_all_shards(
     background_tasks: BackgroundTasks,
@@ -213,17 +221,20 @@ async def trigger_all_shards(
     Safe to call even if data already exists — upserts prevent duplicates.
     """
     job_ids = []
+    filters = []
     for start_year, end_year in YEAR_SHARDS:
         filter_advanced = f"AREA[StudyFirstPostDate]RANGE[01/01/{start_year},12/31/{end_year}]"
         job_id = _create_job(start_year, end_year, None, max_pages, filter_advanced)
-        background_tasks.add_task(_run_ingestion_job, job_id, None, filter_advanced, max_pages)
         job_ids.append(job_id)
+        filters.append(filter_advanced)
+
+    background_tasks.add_task(_run_all_shards, job_ids, filters, max_pages)
 
     return {
         "status": "accepted",
         "shards_queued": len(job_ids),
         "job_ids": job_ids,
-        "message": "All shards queued. Check GET /ingest/status for progress.",
+        "message": "All shards queued (3 concurrent). Check GET /ingest/status for progress.",
     }
 
 
