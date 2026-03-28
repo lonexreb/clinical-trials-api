@@ -18,6 +18,6 @@ services:
       - key: CT_GOV_BASE_URL
         value: https://clinicaltrials.gov/api/v2/studies
       - key: BATCH_SIZE
-        value: "500"
+        value: "50"
       - key: LOG_LEVEL
         value: INFO
