@@ -8,7 +8,8 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from app.api.v1.router import v1_router
 from app.core.config import get_settings
-from app.db.session import engine, init_db
+from app.db import session as db_session
+from app.db.session import init_db
 
 
 @asynccontextmanager
@@ -17,8 +18,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logging.basicConfig(level=settings.log_level)
     init_db(settings.database_url)
     yield
-    if engine is not None:
-        await engine.dispose()
+    if db_session.engine is not None:
+        await db_session.engine.dispose()
 
 
 app = FastAPI(

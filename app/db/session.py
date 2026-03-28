@@ -20,7 +20,14 @@ def init_db(database_url: str) -> None:
         connect_args["ssl"] = ssl_context
 
     engine = create_async_engine(
-        database_url, echo=False, pool_pre_ping=True, connect_args=connect_args,
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=300,
+        pool_timeout=10,
+        connect_args=connect_args,
     )
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
