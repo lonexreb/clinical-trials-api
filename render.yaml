@@ -1,6 +1,6 @@
 databases:
   - name: clinical-trials-etl-db
-    plan: starter
+    plan: basic_256mb
     databaseName: clinical_trials
     user: clinical_trials_user
 
