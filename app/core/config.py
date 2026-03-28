@@ -12,12 +12,18 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def normalize_database_url(self) -> "Settings":
-        """Convert Render/standard postgres:// URLs to asyncpg format."""
+        """Convert Render/Fly.io postgres:// URLs to asyncpg format."""
         url = self.database_url
+        # Strip sslmode param — asyncpg uses ssl=True/False instead
+        if "?" in url:
+            base, query = url.split("?", 1)
+            params = [p for p in query.split("&") if not p.startswith("sslmode=")]
+            url = f"{base}?{'&'.join(params)}" if params else base
         if url.startswith("postgres://"):
-            self.database_url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgresql://") and "+asyncpg" not in url:
-            self.database_url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        self.database_url = url
         return self
 
     @property
