@@ -74,6 +74,18 @@ COMPLETE_STUDY: dict[str, object] = {
                     "timeFrame": "Up to 5 years",
                 },
             ],
+            "secondaryOutcomes": [
+                {
+                    "measure": "Progression Free Survival",
+                    "description": "Time to disease progression or death",
+                    "timeFrame": "Up to 3 years",
+                },
+                {
+                    "measure": "Quality of Life",
+                    "description": "EORTC QLQ-C30 score change from baseline",
+                    "timeFrame": "Every 12 weeks",
+                },
+            ],
         },
         "contactsLocationsModule": {
             "locations": [
@@ -93,14 +105,37 @@ class TestParseStudy:
         assert result["phase"] == "PHASE3"
         assert result["status"] == "RECRUITING"
         assert result["sponsor_name"] == "Pfizer"
-        assert result["intervention_type"] == "DRUG"
-        assert result["intervention_name"] == "Drug X"
-        assert result["primary_outcome_measure"] == "Overall Survival"
-        assert result["primary_outcome_description"] == "Time from randomization to death from any cause"
         assert result["start_date"] == datetime.date(2023, 1, 15)
         assert result["completion_date"] == datetime.date(2025, 12, 31)
-        assert result["location_country"] == "United States"
         assert result["enrollment_number"] == 500
+
+    def test_interventions_full_array(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["interventions"] is not None
+        assert len(result["interventions"]) == 2
+        assert result["interventions"][0]["type"] == "DRUG"
+        assert result["interventions"][0]["name"] == "Drug X"
+        assert result["interventions"][1]["name"] == "Placebo"
+
+    def test_primary_outcomes_full_array(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["primary_outcomes"] is not None
+        assert len(result["primary_outcomes"]) == 1
+        assert result["primary_outcomes"][0]["measure"] == "Overall Survival"
+
+    def test_secondary_outcomes_full_array(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["secondary_outcomes"] is not None
+        assert len(result["secondary_outcomes"]) == 2
+        assert result["secondary_outcomes"][0]["measure"] == "Progression Free Survival"
+        assert result["secondary_outcomes"][1]["measure"] == "Quality of Life"
+
+    def test_locations_full_array(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["locations"] is not None
+        assert len(result["locations"]) == 2
+        assert result["locations"][0]["country"] == "United States"
+        assert result["locations"][1]["city"] == "London"
 
     def test_missing_interventions_module(self) -> None:
         study: dict[str, object] = {
@@ -112,8 +147,7 @@ class TestParseStudy:
             },
         }
         result = parse_study(study)
-        assert result["intervention_type"] is None
-        assert result["intervention_name"] is None
+        assert result["interventions"] is None
 
     def test_missing_outcomes_module(self) -> None:
         study: dict[str, object] = {
@@ -125,8 +159,8 @@ class TestParseStudy:
             },
         }
         result = parse_study(study)
-        assert result["primary_outcome_measure"] is None
-        assert result["primary_outcome_description"] is None
+        assert result["primary_outcomes"] is None
+        assert result["secondary_outcomes"] is None
 
     def test_missing_locations_module(self) -> None:
         study: dict[str, object] = {
@@ -138,7 +172,7 @@ class TestParseStudy:
             },
         }
         result = parse_study(study)
-        assert result["location_country"] is None
+        assert result["locations"] is None
 
     def test_empty_phases_list(self) -> None:
         study: dict[str, object] = {
@@ -192,9 +226,10 @@ class TestParseStudy:
         }
         result = parse_study(study)
         assert result["phase"] is None
-        assert result["intervention_type"] is None
-        assert result["primary_outcome_measure"] is None
-        assert result["location_country"] is None
+        assert result["interventions"] is None
+        assert result["primary_outcomes"] is None
+        assert result["secondary_outcomes"] is None
+        assert result["locations"] is None
         assert result["enrollment_number"] is None
 
     def test_raw_data_preserved(self) -> None:
@@ -220,8 +255,7 @@ class TestParseStudy:
             },
         }
         result = parse_study(study)
-        assert result["intervention_type"] is None
-        assert result["intervention_name"] is None
+        assert result["interventions"] is None
 
     def test_empty_primary_outcomes_list(self) -> None:
         study: dict[str, object] = {
@@ -234,8 +268,20 @@ class TestParseStudy:
             },
         }
         result = parse_study(study)
-        assert result["primary_outcome_measure"] is None
-        assert result["primary_outcome_description"] is None
+        assert result["primary_outcomes"] is None
+
+    def test_empty_secondary_outcomes_list(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+                "outcomesModule": {"secondaryOutcomes": []},
+            },
+        }
+        result = parse_study(study)
+        assert result["secondary_outcomes"] is None
 
     def test_year_month_date_format(self) -> None:
         """CT.gov sometimes returns dates as YYYY-MM."""

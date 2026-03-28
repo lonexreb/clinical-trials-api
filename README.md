@@ -172,7 +172,28 @@ python -m scripts.run_ingestion --query "breast cancer" --max-pages 10
 # Each page fetches up to 1000 studies from ClinicalTrials.gov
 ```
 
-Ingestion supports incremental updates via `since_date` parameter, using CT.gov's `LastUpdatePostDate` filter.
+### Daily Incremental Updates
+
+The pipeline supports incremental ingestion to fetch only records updated since a given date:
+
+```bash
+# Fetch only trials updated since yesterday
+python -m scripts.run_ingestion --since yesterday
+
+# Fetch trials updated since a specific date
+python -m scripts.run_ingestion --since 2024-03-01
+
+# Combine with query filter
+python -m scripts.run_ingestion --since yesterday --query "cancer"
+```
+
+This uses ClinicalTrials.gov's `filter.advanced=AREA[LastUpdatePostDate]RANGE[date,MAX]` to only fetch new/updated records. Upserts are idempotent — running the same ingestion twice produces no duplicates.
+
+**Setting up a daily cron job:**
+```bash
+# Run daily at 2 AM
+0 2 * * * cd /path/to/OpenAlex && .venv/bin/python -m scripts.run_ingestion --since yesterday
+```
 
 Ingestion errors are logged to `ingestion_errors.jsonl` for review.
 
@@ -195,6 +216,23 @@ The `trials` table stores both structured columns for fast queries and JSONB arr
 | `locations` | JSONB | Full array of location dicts |
 | `enrollment_number` | INTEGER | Target/actual enrollment |
 | `raw_data` | JSONB | Complete original CT.gov record |
+
+## OpenAlex Integration
+
+The API is designed for direct consumption by OpenAlex. Example workflow:
+
+```bash
+# 1. Search for Phase 3 recruiting trials sponsored by Pfizer
+curl "https://clinical-trials-api-meoh.onrender.com/trials/search?sponsor=pfizer&phase=phase3&status=recruiting&limit=100"
+
+# 2. Bulk export all trials as NDJSON for batch processing
+curl --compressed "https://clinical-trials-api-meoh.onrender.com/trials/export?format=ndjson" -o all_trials.ndjson
+
+# 3. Get a specific trial by NCT ID
+curl "https://clinical-trials-api-meoh.onrender.com/trials/NCT12345678"
+```
+
+No authentication required. Standard JSON responses. CORS enabled for all origins.
 
 ## Running Tests
 

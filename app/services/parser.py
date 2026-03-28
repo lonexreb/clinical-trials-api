@@ -13,13 +13,12 @@ class ParsedTrial(TypedDict):
     phase: str | None
     status: str
     sponsor_name: str
-    intervention_type: str | None
-    intervention_name: str | None
-    primary_outcome_description: str | None
-    primary_outcome_measure: str | None
+    interventions: list[dict[str, object]] | None
+    primary_outcomes: list[dict[str, object]] | None
+    secondary_outcomes: list[dict[str, object]] | None
     start_date: datetime.date | None
     completion_date: datetime.date | None
-    location_country: str | None
+    locations: list[dict[str, object]] | None
     enrollment_number: int | None
     raw_data: dict[str, object]
 
@@ -82,50 +81,33 @@ def _safe_get(data: dict[str, object], *keys: str) -> object:
     return current
 
 
-def _first_from_list(data: dict[str, object], *keys: str, field: str | None = None) -> object:
-    """Navigate to a nested list, get first element, optionally extract a field."""
-    items = _safe_get(data, *keys)
+def _ensure_dict(val: object) -> dict[str, object]:
+    """Return val if it's a dict, otherwise return empty dict."""
+    return val if isinstance(val, dict) else {}
+
+
+def _parse_list_of_dicts(items: object) -> list[dict[str, object]] | None:
+    """Extract a list of dicts from a potentially None/non-list value."""
     if not isinstance(items, list) or len(items) == 0:
         return None
-    first = items[0]
-    if field is not None and isinstance(first, dict):
-        return first.get(field)
-    return first
+    return [item for item in items if isinstance(item, dict)] or None
 
 
 def parse_study(study: dict[str, object]) -> ParsedTrial:
-    """Map a CT.gov API v2 study object to our flat schema.
+    """Map a CT.gov API v2 study object to our schema.
 
     The study object has deeply nested data under protocolSection
     with various modules. Each module may be absent or None.
     """
-    protocol = study.get("protocolSection", {}) or {}
-    if not isinstance(protocol, dict):
-        protocol = {}
+    protocol = _ensure_dict(study.get("protocolSection", {}))
 
-    id_mod = protocol.get("identificationModule", {}) or {}
-    status_mod = protocol.get("statusModule", {}) or {}
-    design_mod = protocol.get("designModule", {}) or {}
-    sponsor_mod = protocol.get("sponsorCollaboratorsModule", {}) or {}
-    arms_mod = protocol.get("armsInterventionsModule", {}) or {}
-    outcomes_mod = protocol.get("outcomesModule", {}) or {}
-    contacts_mod = protocol.get("contactsLocationsModule", {}) or {}
-
-    # Ensure dicts
-    if not isinstance(id_mod, dict):
-        id_mod = {}
-    if not isinstance(status_mod, dict):
-        status_mod = {}
-    if not isinstance(design_mod, dict):
-        design_mod = {}
-    if not isinstance(sponsor_mod, dict):
-        sponsor_mod = {}
-    if not isinstance(arms_mod, dict):
-        arms_mod = {}
-    if not isinstance(outcomes_mod, dict):
-        outcomes_mod = {}
-    if not isinstance(contacts_mod, dict):
-        contacts_mod = {}
+    id_mod = _ensure_dict(protocol.get("identificationModule", {}))
+    status_mod = _ensure_dict(protocol.get("statusModule", {}))
+    design_mod = _ensure_dict(protocol.get("designModule", {}))
+    sponsor_mod = _ensure_dict(protocol.get("sponsorCollaboratorsModule", {}))
+    arms_mod = _ensure_dict(protocol.get("armsInterventionsModule", {}))
+    outcomes_mod = _ensure_dict(protocol.get("outcomesModule", {}))
+    contacts_mod = _ensure_dict(protocol.get("contactsLocationsModule", {}))
 
     # trial_id and title (required)
     trial_id = str(id_mod.get("nctId", "UNKNOWN"))
@@ -141,61 +123,32 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
     status = str(status_mod.get("overallStatus", "UNKNOWN"))
 
     # sponsor
-    lead_sponsor = sponsor_mod.get("leadSponsor") or {}
-    if not isinstance(lead_sponsor, dict):
-        lead_sponsor = {}
+    lead_sponsor = _ensure_dict(sponsor_mod.get("leadSponsor", {}))
     sponsor_name = str(lead_sponsor.get("name", "Unknown"))
 
-    # interventions: list of dicts with type, name
-    interventions = arms_mod.get("interventions") or []
-    if not isinstance(interventions, list):
-        interventions = []
-    intervention_type: str | None = None
-    intervention_name: str | None = None
-    if interventions and isinstance(interventions[0], dict):
-        it = interventions[0].get("type")
-        intervention_type = str(it) if it is not None else None
-        iname = interventions[0].get("name")
-        intervention_name = str(iname) if iname is not None else None
+    # interventions: store full array of dicts
+    interventions = _parse_list_of_dicts(arms_mod.get("interventions"))
 
-    # primary outcomes: list of dicts with measure, description
-    primary_outcomes = outcomes_mod.get("primaryOutcomes") or []
-    if not isinstance(primary_outcomes, list):
-        primary_outcomes = []
-    primary_outcome_measure: str | None = None
-    primary_outcome_description: str | None = None
-    if primary_outcomes and isinstance(primary_outcomes[0], dict):
-        pm = primary_outcomes[0].get("measure")
-        primary_outcome_measure = str(pm) if pm is not None else None
-        pd_val = primary_outcomes[0].get("description")
-        primary_outcome_description = str(pd_val) if pd_val is not None else None
+    # primary outcomes: store full array of dicts
+    primary_outcomes = _parse_list_of_dicts(outcomes_mod.get("primaryOutcomes"))
+
+    # secondary outcomes: store full array of dicts
+    secondary_outcomes = _parse_list_of_dicts(outcomes_mod.get("secondaryOutcomes"))
 
     # dates
-    start_date_struct = status_mod.get("startDateStruct") or {}
-    if not isinstance(start_date_struct, dict):
-        start_date_struct = {}
+    start_date_struct = _ensure_dict(status_mod.get("startDateStruct", {}))
     start_date_str = start_date_struct.get("date")
     start_date = parse_date(str(start_date_str) if start_date_str is not None else None)
 
-    completion_date_struct = status_mod.get("completionDateStruct") or {}
-    if not isinstance(completion_date_struct, dict):
-        completion_date_struct = {}
+    completion_date_struct = _ensure_dict(status_mod.get("completionDateStruct", {}))
     completion_date_str = completion_date_struct.get("date")
     completion_date = parse_date(str(completion_date_str) if completion_date_str is not None else None)
 
-    # location country: first location's country
-    locations = contacts_mod.get("locations") or []
-    if not isinstance(locations, list):
-        locations = []
-    location_country: str | None = None
-    if locations and isinstance(locations[0], dict):
-        lc = locations[0].get("country")
-        location_country = str(lc) if lc is not None else None
+    # locations: store full array of dicts
+    locations = _parse_list_of_dicts(contacts_mod.get("locations"))
 
     # enrollment
-    enrollment_info = design_mod.get("enrollmentInfo") or {}
-    if not isinstance(enrollment_info, dict):
-        enrollment_info = {}
+    enrollment_info = _ensure_dict(design_mod.get("enrollmentInfo", {}))
     enrollment_count = enrollment_info.get("count")
     enrollment_number: int | None = None
     if enrollment_count is not None:
@@ -210,13 +163,12 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
         phase=phase,
         status=status,
         sponsor_name=sponsor_name,
-        intervention_type=intervention_type,
-        intervention_name=intervention_name,
-        primary_outcome_description=primary_outcome_description,
-        primary_outcome_measure=primary_outcome_measure,
+        interventions=interventions,
+        primary_outcomes=primary_outcomes,
+        secondary_outcomes=secondary_outcomes,
         start_date=start_date,
         completion_date=completion_date,
-        location_country=location_country,
+        locations=locations,
         enrollment_number=enrollment_number,
         raw_data=study,  # type: ignore[typeddict-item]
     )

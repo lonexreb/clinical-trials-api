@@ -9,6 +9,7 @@ REST API that pulls clinical trial data from ClinicalTrials.gov, normalizes it i
 - **Data source**: ClinicalTrials.gov API v2 (`https://clinicaltrials.gov/api/v2/studies`)
 - **Python**: 3.11+
 - **Testing**: pytest + pytest-asyncio + httpx (AsyncClient)
+- **Middleware**: GZipMiddleware (automatic compression for responses > 1KB)
 - **Deploy target**: Render (Docker) — live at `https://clinical-trials-api-meoh.onrender.com`
 
 ## Key Directories
@@ -35,7 +36,8 @@ ruff check . && mypy app/                    # lint + types
 alembic upgrade head                         # apply migrations
 alembic revision --autogenerate -m "msg"     # new migration
 docker-compose up -d                         # local Postgres + API
-python -m scripts.run_ingestion              # run ingestion manually
+python -m scripts.run_ingestion              # run full ingestion
+python -m scripts.run_ingestion --since yesterday  # incremental update
 ```
 
 ## Core Schema
@@ -79,7 +81,7 @@ Indexes: `trial_id`, `sponsor_name`, `status`, `phase`.
 - `GET /health` — no DB, always 200
 - `GET /trials/search` — paginated (`?skip=0&limit=50`, max 100), filterable by `sponsor`, `status`, `phase`
 - `GET /trials/{trial_id}` — by NCT ID
-- `GET /trials/export?format=ndjson|csv` — gzip-compressed streaming bulk export, batched DB reads
+- `GET /trials/export?format=ndjson|csv` — streaming bulk export, batched DB reads (1000/batch), auto gzip via GZipMiddleware
 - Errors: `{"detail": "…"}`, 422 validation, 404 not found
 
 ## OpenAlex Integration

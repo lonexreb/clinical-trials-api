@@ -72,3 +72,24 @@ async def test_load_trials_returns_counts(db_session: AsyncSession) -> None:
     total, errors = await load_trials(db_session, trials, batch_size=500)
     assert total == 3
     assert errors == 0
+
+
+@pytest.mark.asyncio
+async def test_jsonb_fields_persisted(db_session: AsyncSession) -> None:
+    """Verify JSONB array fields are stored and retrieved correctly."""
+    trial = _make_trial(
+        "NCT99999999",
+        "JSONB Test",
+        interventions=[{"type": "DRUG", "name": "TestDrug"}],
+        primary_outcomes=[{"measure": "OS"}],
+        secondary_outcomes=[{"measure": "PFS"}],
+        locations=[{"country": "US", "city": "Boston"}],
+    )
+    await upsert_trials_batch(db_session, [trial])
+
+    result = await db_session.scalar(select(Trial).where(Trial.trial_id == "NCT99999999"))
+    assert result is not None
+    assert result.interventions == [{"type": "DRUG", "name": "TestDrug"}]
+    assert result.primary_outcomes == [{"measure": "OS"}]
+    assert result.secondary_outcomes == [{"measure": "PFS"}]
+    assert result.locations == [{"country": "US", "city": "Boston"}]

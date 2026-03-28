@@ -9,13 +9,12 @@ class TrialBase(BaseModel):
     phase: str | None = None
     status: str
     sponsor_name: str
-    intervention_type: str | None = None
-    intervention_name: str | None = None
-    primary_outcome_description: str | None = None
-    primary_outcome_measure: str | None = None
+    interventions: list[dict[str, object]] | None = None
+    primary_outcomes: list[dict[str, object]] | None = None
+    secondary_outcomes: list[dict[str, object]] | None = None
     start_date: datetime.date | None = None
     completion_date: datetime.date | None = None
-    location_country: str | None = None
+    locations: list[dict[str, object]] | None = None
     enrollment_number: int | None = None
 
 
@@ -45,5 +44,6 @@ class TrialListResponse(BaseModel):
 class TrialFilters(BaseModel):
     sponsor: str | None = None
     status: str | None = None
+    phase: str | None = None
     skip: int = Field(default=0, ge=0)
     limit: int = Field(default=50, ge=1, le=100)

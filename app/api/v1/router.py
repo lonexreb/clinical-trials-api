@@ -6,5 +6,6 @@ from app.api.v1.trials import router as trials_router
 
 v1_router = APIRouter()
 v1_router.include_router(health_router)
-v1_router.include_router(trials_router)
+# Export must come before trials so /trials/export matches before /trials/{trial_id}
 v1_router.include_router(export_router)
+v1_router.include_router(trials_router)

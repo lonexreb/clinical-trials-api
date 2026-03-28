@@ -19,13 +19,20 @@ class Trial(Base):
     phase: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(100), nullable=False)
     sponsor_name: Mapped[str] = mapped_column(Text, nullable=False)
-    intervention_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    intervention_name: Mapped[str | None] = mapped_column(Text, nullable=True)
-    primary_outcome_description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    primary_outcome_measure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    interventions: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    primary_outcomes: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    secondary_outcomes: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     start_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     completion_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
-    location_country: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    locations: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     enrollment_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_data: Mapped[dict[str, object]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=False
@@ -44,6 +51,7 @@ class Trial(Base):
         Index("ix_trials_trial_id", "trial_id", unique=True),
         Index("ix_trials_sponsor_name", "sponsor_name"),
         Index("ix_trials_status", "status"),
+        Index("ix_trials_phase", "phase"),
     )
 
     def __repr__(self) -> str:

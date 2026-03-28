@@ -1,12 +1,13 @@
 """Fetch studies from ClinicalTrials.gov API v2 and orchestrate ingestion."""
 
+import datetime
 import json
 import logging
 from pathlib import Path
 
 import httpx
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.schemas.trial import TrialCreate
@@ -22,6 +23,7 @@ async def fetch_studies_page(
     page_size: int = 1000,
     page_token: str | None = None,
     query_term: str | None = None,
+    filter_advanced: str | None = None,
 ) -> tuple[list[dict[str, object]], str | None]:
     """Fetch a single page of studies from CT.gov API v2.
 
@@ -33,6 +35,8 @@ async def fetch_studies_page(
         params["pageToken"] = page_token
     if query_term:
         params["query.term"] = query_term
+    if filter_advanced:
+        params["filter.advanced"] = filter_advanced
 
     response = await client.get(base_url, params=params)
     response.raise_for_status()
@@ -48,6 +52,7 @@ async def fetch_all_studies(
     settings: Settings,
     query_term: str | None = None,
     max_pages: int | None = None,
+    since_date: datetime.date | None = None,
 ) -> list[dict[str, object]]:
     """Fetch all studies by following pagination tokens.
 
@@ -55,10 +60,17 @@ async def fetch_all_studies(
         settings: App settings with ct_gov_base_url.
         query_term: Optional search term to filter studies.
         max_pages: Optional limit on number of pages to fetch (for dev/testing).
+        since_date: If provided, only fetch studies updated on or after this date.
 
     Returns:
         List of raw study dicts from the CT.gov API.
     """
+    filter_advanced: str | None = None
+    if since_date:
+        date_str = since_date.strftime("%m/%d/%Y")
+        filter_advanced = f"AREA[LastUpdatePostDate]RANGE[{date_str},MAX]"
+        logger.info("Incremental fetch: studies updated since %s", since_date)
+
     all_studies: list[dict[str, object]] = []
     page_token: str | None = None
     page_count = 0
@@ -70,6 +82,7 @@ async def fetch_all_studies(
                 settings.ct_gov_base_url,
                 page_token=page_token,
                 query_term=query_term,
+                filter_advanced=filter_advanced,
             )
             all_studies.extend(studies)
             page_count += 1
@@ -131,30 +144,77 @@ async def run_full_ingestion(
     session: AsyncSession,
     query_term: str | None = None,
     max_pages: int | None = None,
+    since_date: datetime.date | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> tuple[int, int, int]:
-    """Full ingestion pipeline: fetch -> parse -> validate -> load -> log errors.
+    """Full ingestion pipeline: fetch -> parse -> validate -> load, page by page.
+
+    Processes each page immediately (fetch -> parse -> load) to keep memory
+    constant regardless of total dataset size.
 
     Returns (total_loaded, total_parse_errors, total_load_errors).
     """
-    logger.info("Starting ingestion (query=%s, max_pages=%s)", query_term, max_pages)
+    logger.info("Starting ingestion (query=%s, max_pages=%s, since=%s)", query_term, max_pages, since_date)
 
-    # Fetch
-    studies = await fetch_all_studies(settings, query_term=query_term, max_pages=max_pages)
-    logger.info("Fetched %d studies from CT.gov", len(studies))
+    filter_advanced: str | None = None
+    if since_date:
+        date_str = since_date.strftime("%m/%d/%Y")
+        filter_advanced = f"AREA[LastUpdatePostDate]RANGE[{date_str},MAX]"
+        logger.info("Incremental fetch: studies updated since %s", since_date)
 
-    # Parse and validate
-    valid_trials, parse_errors = validate_and_parse_studies(studies)
-    logger.info("Parsed %d valid trials, %d errors", len(valid_trials), len(parse_errors))
+    if session_factory is None:
+        from app.db.session import session_factory as sf
+        session_factory = sf
 
-    # Log parse errors
-    log_ingestion_errors(parse_errors)
+    total_loaded = 0
+    total_parse_errors = 0
+    total_load_errors = 0
+    total_fetched = 0
+    page_token: str | None = None
+    page_count = 0
 
-    # Load into database
-    from app.db.session import session_factory as sf
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        while True:
+            # Fetch one page
+            studies, next_token = await fetch_studies_page(
+                client,
+                settings.ct_gov_base_url,
+                page_token=page_token,
+                query_term=query_term,
+                filter_advanced=filter_advanced,
+            )
+            page_count += 1
+            total_fetched += len(studies)
+            logger.info(
+                "Page %d: fetched %d studies (total fetched: %d)",
+                page_count, len(studies), total_fetched,
+            )
 
-    total_loaded, load_errors = await load_trials(
-        session, valid_trials, batch_size=settings.batch_size, session_factory=sf
+            # Parse and validate this page
+            valid_trials, parse_errors = validate_and_parse_studies(studies)
+            total_parse_errors += len(parse_errors)
+            log_ingestion_errors(parse_errors)
+
+            # Load this page into the database
+            if valid_trials:
+                loaded, load_errors = await load_trials(
+                    session, valid_trials, batch_size=settings.batch_size,
+                    session_factory=session_factory,
+                )
+                total_loaded += loaded
+                total_load_errors += load_errors
+
+            logger.info(
+                "Progress: %d loaded, %d parse errors, %d load errors",
+                total_loaded, total_parse_errors, total_load_errors,
+            )
+
+            if not next_token or (max_pages is not None and page_count >= max_pages):
+                break
+            page_token = next_token
+
+    logger.info(
+        "Ingestion complete: %d loaded, %d parse errors, %d load errors",
+        total_loaded, total_parse_errors, total_load_errors,
     )
-    logger.info("Loaded %d trials, %d load errors", total_loaded, load_errors)
-
-    return total_loaded, len(parse_errors), load_errors
+    return total_loaded, total_parse_errors, total_load_errors

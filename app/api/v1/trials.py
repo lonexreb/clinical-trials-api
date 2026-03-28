@@ -1,4 +1,4 @@
-"""Trial API endpoints: list, get, filter."""
+"""Trial API endpoints: search, get by ID."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -8,18 +8,19 @@ from app.db.session import get_db
 from app.models.trial import Trial
 from app.schemas.trial import PaginationMeta, TrialListResponse, TrialResponse
 
-router = APIRouter(prefix="/api/v1", tags=["trials"])
+router = APIRouter(prefix="/trials", tags=["trials"])
 
 
-@router.get("/trials", response_model=TrialListResponse)
-async def list_trials(
+@router.get("/search", response_model=TrialListResponse)
+async def search_trials(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
     sponsor: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    phase: str | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
 ) -> TrialListResponse:
-    """List trials with pagination and optional filtering."""
+    """Search trials with pagination and optional filtering."""
     query = select(Trial)
     count_query = select(func.count()).select_from(Trial)
 
@@ -29,6 +30,9 @@ async def list_trials(
     if status:
         query = query.where(Trial.status.ilike(f"%{status}%"))
         count_query = count_query.where(Trial.status.ilike(f"%{status}%"))
+    if phase:
+        query = query.where(Trial.phase.ilike(f"%{phase}%"))
+        count_query = count_query.where(Trial.phase.ilike(f"%{phase}%"))
 
     total = await session.scalar(count_query) or 0
     results = await session.scalars(query.offset(skip).limit(limit))
@@ -45,7 +49,7 @@ async def list_trials(
     )
 
 
-@router.get("/trials/{trial_id}", response_model=TrialResponse)
+@router.get("/{trial_id}", response_model=TrialResponse)
 async def get_trial(
     trial_id: str,
     session: AsyncSession = Depends(get_db),
