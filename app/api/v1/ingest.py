@@ -1,6 +1,5 @@
 """Ingestion trigger endpoint — supports synchronous and background modes."""
 
-import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -43,9 +42,6 @@ YEAR_SHARDS = [
 # In-memory job tracker (lost on restart — acceptable for this use case)
 _jobs: dict[str, dict] = {}
 
-# Limit concurrent background ingestion jobs
-_semaphore = asyncio.Semaphore(3)
-
 
 async def _run_ingestion_job(
     job_id: str,
@@ -53,53 +49,52 @@ async def _run_ingestion_job(
     filter_advanced: str | None,
     max_pages: int | None,
 ) -> None:
-    """Background task: fetch from CT.gov and load into DB."""
-    async with _semaphore:
-        settings = get_settings()
-        factory = get_session_factory()
+    """Background task: fetch from CT.gov and load into DB (one shard at a time)."""
+    settings = get_settings()
+    factory = get_session_factory()
 
-        _jobs[job_id]["status"] = "running"
-        _jobs[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
+    _jobs[job_id]["status"] = "running"
+    _jobs[job_id]["started_at"] = datetime.now(timezone.utc).isoformat()
 
-        page_token: str | None = None
+    page_token: str | None = None
 
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                while True:
-                    studies, next_token = await fetch_studies_page(
-                        client,
-                        settings.ct_gov_base_url,
-                        page_token=page_token,
-                        query_term=query_term,
-                        filter_advanced=filter_advanced,
-                    )
-                    _jobs[job_id]["pages_fetched"] += 1
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            while True:
+                studies, next_token = await fetch_studies_page(
+                    client,
+                    settings.ct_gov_base_url,
+                    page_token=page_token,
+                    query_term=query_term,
+                    filter_advanced=filter_advanced,
+                )
+                _jobs[job_id]["pages_fetched"] += 1
 
-                    valid_trials, parse_errors = validate_and_parse_studies(studies)
-                    _jobs[job_id]["parse_errors"] += len(parse_errors)
-                    log_ingestion_errors(parse_errors)
+                valid_trials, parse_errors = validate_and_parse_studies(studies)
+                _jobs[job_id]["parse_errors"] += len(parse_errors)
+                log_ingestion_errors(parse_errors)
 
-                    if valid_trials:
-                        async with factory() as session:
-                            loaded, load_errors = await load_trials(
-                                session, valid_trials,
-                                batch_size=settings.batch_size,
-                                session_factory=factory,
-                            )
-                            _jobs[job_id]["loaded"] += loaded
-                            _jobs[job_id]["load_errors"] += load_errors
+                if valid_trials:
+                    async with factory() as session:
+                        loaded, load_errors = await load_trials(
+                            session, valid_trials,
+                            batch_size=settings.batch_size,
+                            session_factory=factory,
+                        )
+                        _jobs[job_id]["loaded"] += loaded
+                        _jobs[job_id]["load_errors"] += load_errors
 
-                    if not next_token or (max_pages and _jobs[job_id]["pages_fetched"] >= max_pages):
-                        break
-                    page_token = next_token
+                if not next_token or (max_pages and _jobs[job_id]["pages_fetched"] >= max_pages):
+                    break
+                page_token = next_token
 
-            _jobs[job_id]["status"] = "complete"
-        except Exception as e:
-            logger.exception("Background ingestion job %s failed: %s", job_id, e)
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = str(e)
-        finally:
-            _jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _jobs[job_id]["status"] = "complete"
+    except Exception as e:
+        logger.exception("Background ingestion job %s failed: %s", job_id, e)
+        _jobs[job_id]["status"] = "failed"
+        _jobs[job_id]["error"] = str(e)
+    finally:
+        _jobs[job_id]["finished_at"] = datetime.now(timezone.utc).isoformat()
 
 
 def _create_job(
@@ -202,59 +197,39 @@ async def trigger_ingestion(
     }
 
 
-async def _run_all_shards(job_ids: list[str], filters: list[str], max_pages: int | None) -> None:
-    """Run all shards concurrently (semaphore limits to 3 at a time)."""
-    await asyncio.gather(*(
-        _run_ingestion_job(job_id, None, filt, max_pages)
-        for job_id, filt in zip(job_ids, filters)
-    ))
-
-
 @router.post("/ingest/all")
 async def trigger_all_shards(
     background_tasks: BackgroundTasks,
     max_pages: int | None = Query(default=None, description="Limit pages per shard (for testing)"),
 ) -> dict[str, object]:
-    """Queue all 12 year-range shards as background ingestion jobs.
+    """Queue all 12 year-range shards as sequential background jobs.
 
-    Concurrency is limited by a semaphore (max 3 simultaneous).
+    Shards run one at a time (BackgroundTasks are sequential).
     Safe to call even if data already exists — upserts prevent duplicates.
     """
     job_ids = []
-    filters = []
     for start_year, end_year in YEAR_SHARDS:
         filter_advanced = f"AREA[StudyFirstPostDate]RANGE[01/01/{start_year},12/31/{end_year}]"
         job_id = _create_job(start_year, end_year, None, max_pages, filter_advanced)
+        background_tasks.add_task(_run_ingestion_job, job_id, None, filter_advanced, max_pages)
         job_ids.append(job_id)
-        filters.append(filter_advanced)
-
-    background_tasks.add_task(_run_all_shards, job_ids, filters, max_pages)
 
     return {
         "status": "accepted",
         "shards_queued": len(job_ids),
         "job_ids": job_ids,
-        "message": "All shards queued (3 concurrent). Check GET /ingest/status for progress.",
+        "message": "All shards queued (sequential). Check GET /ingest/status for progress.",
     }
 
 
 @router.get("/ingest/status")
-async def ingestion_status() -> dict[str, object]:
+async def ingestion_status(
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
     """Return status of all ingestion jobs and current DB count."""
-    try:
-        factory = get_session_factory()
-        async with factory() as session:
-            total_trials: int | str = await session.scalar(
-                select(func.count()).select_from(Trial)
-            ) or 0
-    except Exception as e:
-        logger.exception("Failed to get DB count in /ingest/status")
-        total_trials = f"unavailable: {e}"
-
-    # Snapshot jobs to avoid mutation during serialization
-    jobs_snapshot = [dict(j) for j in _jobs.values()]
+    total_trials = await session.scalar(select(func.count()).select_from(Trial)) or 0
 
     return {
         "db_total": total_trials,
-        "jobs": jobs_snapshot,
+        "jobs": list(_jobs.values()),
     }
