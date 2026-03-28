@@ -2,6 +2,33 @@
 
 REST API that ingests clinical trial data from [ClinicalTrials.gov](https://clinicaltrials.gov) API v2, normalizes it into a PostgreSQL database, and serves it through a queryable API with bulk export support. Built for [OpenAlex](https://openalex.org) integration.
 
+## Live API
+
+**Base URL**: `https://clinical-trials-api-meoh.onrender.com`
+
+```bash
+# Health check
+curl https://clinical-trials-api-meoh.onrender.com/health
+
+# List trials (paginated)
+curl "https://clinical-trials-api-meoh.onrender.com/api/v1/trials?limit=5"
+
+# Single trial by NCT ID
+curl https://clinical-trials-api-meoh.onrender.com/api/v1/trials/NCT00597909
+
+# Filter by sponsor
+curl "https://clinical-trials-api-meoh.onrender.com/api/v1/trials?sponsor=pfizer&limit=5"
+
+# Filter by status
+curl "https://clinical-trials-api-meoh.onrender.com/api/v1/trials?status=recruiting&limit=5"
+
+# Bulk export (NDJSON)
+curl "https://clinical-trials-api-meoh.onrender.com/api/v1/export?format=ndjson" > trials.ndjson
+
+# Bulk export (CSV)
+curl "https://clinical-trials-api-meoh.onrender.com/api/v1/export?format=csv" > trials.csv
+```
+
 ## Architecture
 
 ```
