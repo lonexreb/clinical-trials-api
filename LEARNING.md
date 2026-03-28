@@ -37,6 +37,20 @@
 ### Render Deployment with `render.yaml`
 - Blueprint-based deployment (render.yaml) auto-provisions the database and wires `DATABASE_URL` as a secret. One-click setup.
 
+### Schema Evolution: Flat Columns → JSONB Arrays
+- **Original**: `intervention_type`, `intervention_name`, `primary_outcome_measure`, `primary_outcome_description`, `location_country` — single scalar columns that only captured the first item from each array.
+- **Evolved to**: `interventions`, `primary_outcomes`, `secondary_outcomes`, `locations` — full JSONB arrays storing all items from CT.gov.
+- **Why**: A trial can have 5+ interventions, 3+ outcomes, locations in 10+ countries. Flattening to a single value lost critical data. JSONB arrays preserve full fidelity while still being queryable via Postgres JSONB operators.
+- **Bonus**: Added `secondary_outcomes` which wasn't in the original schema — free with JSONB.
+
+### Gzip-Compressed Export Streaming
+- Wrapping the export response with `Content-Encoding: gzip` dramatically reduces transfer size (4MB NDJSON → ~400KB compressed).
+- Batched DB reads (1000 records at a time via offset/limit) with `defer(Trial.raw_data)` keeps memory bounded and avoids the `stream_scalars` issues.
+
+### Incremental Ingestion via `filter.advanced`
+- CT.gov API supports `AREA[LastUpdatePostDate]RANGE[MM/DD/YYYY,MAX]` to fetch only recently updated studies.
+- Added `since_date` parameter to `run_full_ingestion()` to support incremental sync without re-fetching everything.
+
 ---
 
 ## Things That Didn't Work
@@ -50,7 +64,7 @@
 ### `stream_scalars()` on Render
 - **What happened**: Replaced `scalars()` with `stream_scalars()` for memory-efficient streaming export. The endpoint returned **0 bytes** silently (HTTP 502).
 - **Why**: `stream_scalars()` uses server-side cursors which require the connection to stay open during the entire streaming response. Render's managed Postgres appears to close idle connections during the stream, and Starlette's `StreamingResponse` swallows the resulting exception.
-- **Resolution**: Reverted to `scalars()` which loads all records before streaming the response. Acceptable for MVP scale.
+- **Resolution**: Replaced with batched offset/limit reads (1000 records at a time) — keeps memory bounded without needing server-side cursors.
 
 ### Export Loading Full `raw_data` JSONB
 - **What happened**: `select(Trial)` loads every column including `raw_data` (the full CT.gov JSON blob, often 10-50KB per record). For 5000 records, this is 50-250MB of data transferred from the database — causing timeouts on Render.
@@ -83,9 +97,14 @@
 | Decision | Rationale |
 |----------|-----------|
 | API v2 (JSON) over XML/CSV dump | Real-time, paginated, no file management needed |
-| Single `trials` table + JSONB `raw_data` | Flat columns for querying, JSONB for extensibility |
+| Single `trials` table + JSONB arrays | Scalar columns for querying, JSONB arrays for full data fidelity |
 | `pageToken` pagination (CT.gov) vs offset | CT.gov API requires token-based pagination |
 | `skip/limit` pagination (our API) vs cursor | Simpler for consumers, acceptable at MVP scale |
 | ILIKE for filtering | Case-insensitive partial matching without extra indexes |
 | Render over Fly.io | Standard Postgres URLs, simpler deployment, no SSL workarounds |
 | Batch size 50 for remote ingestion | Balances throughput vs connection stability on managed Postgres |
+| JSONB arrays over flat columns | Preserves all interventions/outcomes/locations instead of just first |
+| Gzip-compressed export | Reduces transfer size ~10x for bulk downloads |
+| Batched offset/limit for export | Avoids stream_scalars issues while keeping memory bounded |
+| `defer(raw_data)` in export query | Excludes 10-50KB JSONB blobs the response doesn't need |
+| `filter.advanced` for incremental sync | Only fetch updated studies instead of re-ingesting everything |
