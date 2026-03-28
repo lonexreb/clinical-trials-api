@@ -1,14 +1,15 @@
 databases:
   - name: clinical-trials-db
-    plan: free
+    plan: starter
     databaseName: clinical_trials
     user: clinical_trials_user
 
 services:
+  # API service — serves /trials/search, /trials/export, /health
   - type: web
     name: clinical-trials-api
     runtime: docker
-    plan: free
+    plan: starter
     dockerfilePath: ./Dockerfile
     envVars:
       - key: DATABASE_URL
@@ -18,6 +19,26 @@ services:
       - key: CT_GOV_BASE_URL
         value: https://clinicaltrials.gov/api/v2/studies
       - key: BATCH_SIZE
-        value: "50"
+        value: "500"
+      - key: LOG_LEVEL
+        value: INFO
+
+  # Daily ingestion cron job — runs at 2 AM UTC, fetches new/updated trials
+  - type: cron
+    name: clinical-trials-ingest
+    runtime: docker
+    plan: starter
+    schedule: "0 2 * * *"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: "sh -c 'alembic upgrade head && python -m scripts.run_ingestion --since yesterday'"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clinical-trials-db
+          property: connectionString
+      - key: CT_GOV_BASE_URL
+        value: https://clinicaltrials.gov/api/v2/studies
+      - key: BATCH_SIZE
+        value: "500"
       - key: LOG_LEVEL
         value: INFO

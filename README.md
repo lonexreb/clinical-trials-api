@@ -197,6 +197,27 @@ This uses ClinicalTrials.gov's `filter.advanced=AREA[LastUpdatePostDate]RANGE[da
 
 Ingestion errors are logged to `ingestion_errors.jsonl` for review.
 
+### Parallel Initial Load
+
+For the initial full dataset load (~500K+ trials), the parallel ingestion script splits the dataset into 12 year-range shards and fetches them concurrently:
+
+```bash
+# 6 concurrent workers — loads 578K trials in ~6 minutes
+python -m scripts.demo_parallel --workers 6
+
+# Or use the convenience script
+./scripts/initial_load.sh
+```
+
+**Performance:** 578,109 trials loaded in 5.9 minutes (1,633 records/sec) with 6 concurrent workers.
+
+### Production Ingestion (Render)
+
+On Render, ingestion runs as a **cron job** (not via HTTP endpoints) with direct internal DB access:
+- **Daily cron**: runs at 2 AM UTC via `render.yaml`, fetches only new/updated records
+- **Initial load**: trigger the cron job manually from the Render dashboard, or run `scripts/initial_load.sh` as a one-off job
+- **Batch size**: 500 (uses internal DB connection, no external timeout limits)
+
 ## Schema
 
 The `trials` table stores both structured columns for fast queries and JSONB arrays for full data fidelity:
