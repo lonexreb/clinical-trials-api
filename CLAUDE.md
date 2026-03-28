@@ -10,34 +10,40 @@ REST API that pulls clinical trial data from ClinicalTrials.gov, normalizes it i
 - **Python**: 3.11+
 - **Testing**: pytest + pytest-asyncio + httpx (AsyncClient)
 - **Middleware**: GZipMiddleware (automatic compression for responses > 1KB)
-- **Deploy target**: Render (Docker) — live at `https://clinical-trials-api-meoh.onrender.com`
+- **Deploy target**: Render (Docker + cron) — live at `https://clinical-trials-api-meoh.onrender.com`
 
 ## Key Directories
 ```
 app/
-├── api/v1/          # Route handlers: trials, export, health
+├── api/v1/          # Route handlers: trials, export, health, ingest
 ├── core/            # Config (Settings via pydantic-settings), dependencies
 ├── models/          # SQLAlchemy ORM models (trials table)
 ├── schemas/         # Pydantic request/response schemas
 ├── services/        # Business logic: ingestion, parsing, transformation
 │   ├── ingestion.py # Fetch from ClinicalTrials.gov API v2, incremental sync
-│   ├── parser.py    # Map CT.gov nested JSON → unified schema
+│   ├── parser.py    # Map CT.gov nested JSON → unified schema (JSONB arrays)
 │   └── loader.py    # Batch upsert to PostgreSQL (session-per-batch)
 ├── db/              # Engine, session, Alembic config
 │   └── migrations/
 └── tests/           # Mirrors app/ structure
+scripts/
+├── run_ingestion.py    # CLI: full or incremental ingestion (--since, --query)
+├── demo_parallel.py    # Parallel initial load via year-range sharding
+├── demo_progressive.py # Progressive ingestion demo
+└── initial_load.sh     # Convenience script for full dataset load
 ```
 
 ## Commands
 ```bash
-uvicorn app.main:app --reload --port 8000    # dev server
-pytest tests/ -v --tb=short                  # all tests
-ruff check . && mypy app/                    # lint + types
-alembic upgrade head                         # apply migrations
-alembic revision --autogenerate -m "msg"     # new migration
-docker-compose up -d                         # local Postgres + API
-python -m scripts.run_ingestion              # run full ingestion
-python -m scripts.run_ingestion --since yesterday  # incremental update
+uvicorn app.main:app --reload --port 8000           # dev server
+pytest tests/ -v --tb=short                         # all tests
+ruff check . && mypy app/                           # lint + types
+alembic upgrade head                                # apply migrations
+alembic revision --autogenerate -m "msg"            # new migration
+docker-compose up -d                                # local Postgres + API
+python -m scripts.run_ingestion                     # full ingestion
+python -m scripts.run_ingestion --since yesterday   # incremental update
+python -m scripts.demo_parallel --workers 6         # parallel initial load (~6 min for 578K)
 ```
 
 ## Core Schema
@@ -59,12 +65,24 @@ Single `trials` table with these columns:
 
 Indexes: `trial_id`, `sponsor_name`, `status`, `phase`.
 
+Migrations:
+- `001_initial_schema.py` — base table with JSONB raw_data + indexes
+- `002_jsonb_arrays_and_secondary_outcomes.py` — evolve flat columns to JSONB arrays
+
+## Database Stats (66,773 trials loaded)
+- **14,291** unique sponsors, **14** statuses, **6** phases
+- Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
+- Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK
+- Data completeness: 99.8% have interventions, 99.9% have primary outcomes, 99.8% have locations
+
 ## ClinicalTrials.gov API v2 — Critical Details
 - Base: `https://clinicaltrials.gov/api/v2/studies`
 - No API key. No auth. Generous rate limits.
 - JSON default. Max `pageSize=1000` (default 10 — always set explicitly).
 - Pagination is token-based via `pageToken`, NOT offset.
-- Supports `filter.advanced` for incremental sync (e.g., `AREA[LastUpdatePostDate]RANGE[MM/DD/YYYY,MAX]`).
+- Supports `filter.advanced` for:
+  - Incremental sync: `AREA[LastUpdatePostDate]RANGE[MM/DD/YYYY,MAX]`
+  - Year-range sharding: `AREA[StudyFirstPostDate]RANGE[01/01/YYYY,12/31/YYYY]`
 - Study data nests under `protocolSection`:
   - `identificationModule` → NCTId, briefTitle
   - `statusModule` → overallStatus, startDateStruct, completionDateStruct
@@ -75,14 +93,20 @@ Indexes: `trial_id`, `sponsor_name`, `status`, `phase`.
   - `contactsLocationsModule` → locations[] (full array stored as JSONB)
 - **Dates are INCONSISTENT**: "2024-01-15", "January 2024", "January 15, 2024". Parse defensively with fallback chain.
 - Arrays (interventions, locations, outcomes) may be null or empty. Never assume they exist.
-- Example: `GET /api/v2/studies?query.term=cancer&pageSize=100&format=json`
 
 ## API Endpoints (Our API)
 - `GET /health` — no DB, always 200
 - `GET /trials/search` — paginated (`?skip=0&limit=50`, max 100), filterable by `sponsor`, `status`, `phase`
 - `GET /trials/{trial_id}` — by NCT ID
 - `GET /trials/export?format=ndjson|csv` — streaming bulk export, batched DB reads (1000/batch), auto gzip via GZipMiddleware
+- `POST /ingest` — trigger ingestion from deployed service (supports `query`, `max_pages`, `year_start`, `year_end`)
 - Errors: `{"detail": "…"}`, 422 validation, 404 not found
+
+## Production Deployment (Render)
+- **Web service**: `clinical-trials-api` (Docker, starter plan)
+- **Database**: `clinical-trials-db` (PostgreSQL, starter plan)
+- **Cron job**: `clinical-trials-ingest` — runs daily at 2 AM UTC, `--since yesterday`
+- `render.yaml` defines all three resources with auto-wired DATABASE_URL
 
 ## OpenAlex Integration
 - Publicly reachable at `https://clinical-trials-api-meoh.onrender.com`
@@ -101,7 +125,7 @@ Indexes: `trial_id`, `sponsor_name`, `status`, `phase`.
 - NEVER modify applied migration files
 - NEVER hardcode credentials — env vars via `app/core/config.py`
 - Date parsing MUST handle multiple CT.gov formats
-- Batch inserts: max 500 per batch (use 50 for remote/hosted Postgres)
+- Batch inserts: max 500 per batch (use 50 for external remote Postgres)
 - `/health` must not touch the database
 - Update CLAUDE.md, README.md, and LEARNING.md with each commit
 

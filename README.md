@@ -32,6 +32,13 @@ curl "https://clinical-trials-api-meoh.onrender.com/trials/export?format=ndjson"
 curl "https://clinical-trials-api-meoh.onrender.com/trials/export?format=csv" --compressed > trials.csv
 ```
 
+## Current Database
+- **66,773 trials** ingested from ClinicalTrials.gov
+- **14,291** unique sponsors | **14** statuses | **6** phases
+- 99.8% data completeness on interventions, outcomes, and locations
+- Top statuses: COMPLETED (36K), RECRUITING (7.7K), TERMINATED (3.8K)
+- Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK, Pfizer
+
 ## Architecture
 
 ```
@@ -156,6 +163,15 @@ curl "http://localhost:8000/trials/export?format=csv" --compressed > trials.csv
 ```
 
 Export streams data in batches of 1000 from the database, excluding the large `raw_data` field to keep responses fast.
+
+### Trigger Ingestion (from deployed service)
+```bash
+# Ingest cancer trials (2 pages)
+curl -X POST "http://localhost:8000/ingest?query=cancer&max_pages=2"
+
+# Shard by year range (for parallel loading)
+curl -X POST "http://localhost:8000/ingest?year_start=2020&year_end=2023"
+```
 
 ### Interactive Docs
 Open [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI.

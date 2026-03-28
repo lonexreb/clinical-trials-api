@@ -8,8 +8,9 @@
 
 ### ClinicalTrials.gov API v2
 - No API key required, generous rate limits, JSON by default.
-- Token-based pagination (`pageToken`) is reliable — fetched 5000 studies across 5 pages with zero failures.
+- Token-based pagination (`pageToken`) is reliable — fetched 578K+ studies with zero failures.
 - Max `pageSize=1000` works consistently.
+- `filter.advanced` supports both `LastUpdatePostDate` (incremental) and `StudyFirstPostDate` (sharding) ranges.
 
 ### Date Parsing with Fallback Chain
 - CT.gov dates come in 4+ formats: `"2018-11-29"`, `"2015-10"`, `"January 2024"`, `"January 15, 2024"`.
@@ -36,6 +37,13 @@
 
 ### Render Deployment with `render.yaml`
 - Blueprint-based deployment (render.yaml) auto-provisions the database and wires `DATABASE_URL` as a secret. One-click setup.
+- Supports three service types in one file: web (API), cron (daily ingestion), and database.
+- Cron job runs `--since yesterday` daily at 2 AM UTC with internal DB connection (batch size 500, no external timeout issues).
+
+### Production `/ingest` Endpoint
+- Added `POST /ingest` to trigger ingestion from the deployed service without SSH access.
+- Supports `year_start`/`year_end` params for sharding — can run parallel initial loads by hitting the endpoint multiple times with different year ranges.
+- Processes pages inline (fetch → parse → load per page) instead of buffering all studies in memory.
 
 ### Schema Evolution: Flat Columns → JSONB Arrays
 - **Original**: `intervention_type`, `intervention_name`, `primary_outcome_measure`, `primary_outcome_description`, `location_country` — single scalar columns that only captured the first item from each array.
@@ -57,6 +65,14 @@
 - **Solution**: Split the dataset into 12 year-range shards (1999-2005, 2006-2009, ..., 2025-2026) using `AREA[StudyFirstPostDate]RANGE[start,end]` and run them concurrently with `asyncio.gather()` + a semaphore.
 - **Result**: 6 concurrent workers ingested **578,109 trials in 5.9 minutes** (1,633 records/sec) — a ~4-5x improvement over sequential.
 - Key insight: CT.gov doesn't rate-limit per IP, it rate-limits per connection. Multiple connections work fine.
+
+### Database at Scale (66,773 trials)
+- 14,291 unique sponsors, 14 statuses, 6 phases
+- 99.8% data completeness on interventions, outcomes, and locations
+- Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
+- Top sponsors: Assiut University (550), Cairo University (476), NCI (469), AstraZeneca (400)
+- JSONB arrays working well — a single trial can have 10+ interventions, 20+ locations
+- `defer(raw_data)` is essential for export queries — without it, 66K records × 10-50KB = 660MB-3.3GB from DB
 
 ---
 
