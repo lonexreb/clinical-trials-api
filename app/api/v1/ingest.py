@@ -241,16 +241,20 @@ async def trigger_all_shards(
 @router.get("/ingest/status")
 async def ingestion_status() -> dict[str, object]:
     """Return status of all ingestion jobs and current DB count."""
-    # Use a short-lived session from the factory to avoid competing
-    # with background tasks for the Depends(get_db) connection pool.
-    factory = get_session_factory()
     try:
+        factory = get_session_factory()
         async with factory() as session:
-            total_trials = await session.scalar(select(func.count()).select_from(Trial)) or 0
-    except Exception:
-        total_trials = "unavailable"
+            total_trials: int | str = await session.scalar(
+                select(func.count()).select_from(Trial)
+            ) or 0
+    except Exception as e:
+        logger.exception("Failed to get DB count in /ingest/status")
+        total_trials = f"unavailable: {e}"
+
+    # Snapshot jobs to avoid mutation during serialization
+    jobs_snapshot = [dict(j) for j in _jobs.values()]
 
     return {
         "db_total": total_trials,
-        "jobs": list(_jobs.values()),
+        "jobs": jobs_snapshot,
     }
