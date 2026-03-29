@@ -30,7 +30,7 @@ services:
     runtime: docker
     schedule: "0 2 * * *"
     dockerfilePath: ./Dockerfile
-    dockerCommand: "sh -c 'alembic upgrade head && python -m scripts.run_ingestion --since yesterday'"
+    dockerCommand: alembic upgrade head && python -m scripts.run_ingestion --since yesterday
     envVars:
       - key: DATABASE_URL
         fromDatabase:
