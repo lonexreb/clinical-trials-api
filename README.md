@@ -32,6 +32,10 @@ curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndj
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=csv" --compressed > trials.csv
 ```
 
+## Demo Video
+
+[Watch the 2-minute walkthrough](https://www.loom.com/share/ab906165ff08458a8dd7a31e7ebb2012) — covers daily ingestion, checking DB rows, bulk export, and filtered search.
+
 ## Current Database
 
 **578,109 trials** — the full ClinicalTrials.gov dataset, ingested with zero errors.
@@ -354,7 +358,9 @@ Built in ~2 hours 50 minutes of active coding, distributed over 3 days. Most ela
 
 **Approach**: Research the ClinicalTrials.gov API v2 design first (nested JSON structure, pagination model, date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
 
-See [LEARNING.md](LEARNING.md) for the full breakdown of what worked, what didn't, and key architectural decisions.
+**Challenges faced along the way**: Fly.io asyncpg SSL incompatibility (migrated to Render), `stream_scalars()` silently returning 0 bytes on managed Postgres (switched to batched reads), Render starter-plan storage lockout at 325K trials (12-hour wait, then upgraded to basic-1gb), DB connection pool exhaustion with concurrent ingestion shards (reverted to sequential + pool limits), and batch size tuning across local vs remote connections. Each fix was 5-20 lines of code — the real cost was diagnosing and waiting.
+
+See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
 ## Additional Docs
 

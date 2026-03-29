@@ -103,7 +103,27 @@ This iterative approach meant the project was always in a working state — each
 
 ---
 
-## Things That Didn't Work
+## Deployment Journey — Problems & Solutions (Chronological)
+
+The path from working locally to a production API with 578K trials was the most time-consuming part of the project. Here's the chronological story of what went wrong and how each problem was solved:
+
+| # | Problem | Impact | Resolution | Time Lost |
+|---|---------|--------|------------|-----------|
+| 1 | **Fly.io + asyncpg SSL incompatibility** | `TypeError` on connect — asyncpg doesn't accept `sslmode` as a URL param; stripping it caused TLS handshake failure | Abandoned Fly.io, migrated to Render | ~1 hour |
+| 2 | **`stream_scalars()` returns 0 bytes on Render** | Export endpoint silently returned empty (HTTP 502) — server-side cursors don't survive Render's connection timeouts | Replaced with batched offset/limit reads (1000/batch) | ~30 min |
+| 3 | **Export loading full `raw_data` JSONB** | 5000 records × 10-50KB = 250MB from DB, causing timeouts | Added `defer(Trial.raw_data)` since export doesn't need it | ~15 min |
+| 4 | **Batch size 500 over external Render connection** | `ConnectionDoesNotExistError` after first batch — idle connections killed between batches | Reduced to 50, added `session_factory` for fresh sessions per batch | ~30 min |
+| 5 | **Render starter plan storage limit** | DB filled up at ~325K trials, Render blocked all writes | Waited **12 hours** for DB to become writable again | **12 hours** |
+| 6 | **Blueprint redeployment needed** | Original DB degraded after storage limit — needed clean slate | Created fresh Blueprint, renamed services to `clinical-trials-etl-*` | ~20 min |
+| 7 | **DB connection leak with concurrent shards** | 12 concurrent `asyncio.gather()` shards exhausted connection pool | Reverted to sequential shards, added engine disposal + pool limits | ~45 min |
+| 8 | **Batch size tuning** | 500 failed remotely, 50 was too slow internally, 100 was unstable | Settled on 500 for internal (Render cron), 50 for external connections | ~20 min |
+| 9 | **Local Postgres port conflict** | Docker's `5432:5432` hit Homebrew Postgres instead of container | Used local Postgres directly | ~10 min |
+
+**Key takeaway**: The actual code changes for each fix were small (5-20 lines). The time cost was in diagnosing the problem, waiting for deploys, and waiting for ingestion runs to verify the fix. The 12-hour storage lockout alone was longer than all active coding combined.
+
+---
+
+## Things That Didn't Work (Detailed)
 
 ### Fly.io + asyncpg SSL Incompatibility
 - **What happened**: Fly.io attaches Postgres with `?sslmode=disable` in the DATABASE_URL. `asyncpg` does not recognize `sslmode` as a URL query parameter and throws `TypeError: connect() got an unexpected keyword argument 'sslmode'`.
@@ -188,6 +208,7 @@ This iterative approach meant the project was always in a working state — each
 
 ### Deployment
 - **Live URL**: `https://clinical-trials-etl-api-qx33.onrender.com`
+- **Demo video**: [2-minute walkthrough on Loom](https://www.loom.com/share/ab906165ff08458a8dd7a31e7ebb2012)
 - **578,109 trials** in production PostgreSQL (basic-1gb, 10GB disk) — full dataset, zero errors
 - Three services defined in single `render.yaml`: web (API), cron (daily ingestion), database
 - Blueprint deploy auto-provisions database and wires `DATABASE_URL` as a secret
