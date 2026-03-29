@@ -33,12 +33,19 @@ curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=csv
 ```
 
 ## Current Database
-- **325,733 trials** ingested from ClinicalTrials.gov
+
+**578,109 trials** — the full ClinicalTrials.gov dataset, ingested with zero errors.
+
+```
+DB: 578,109 (100.0%)  |  Shards: 12/12  |  Errors: 0
+```
+
 - **14,291** unique sponsors | **14** statuses | **6** phases
 - 99.8% data completeness on interventions, outcomes, and locations
 - Top statuses: COMPLETED (36K), RECRUITING (7.7K), TERMINATED (3.8K)
 - Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK, Pfizer
-- Full ~500K dataset loadable via parallel ingestion (`scripts/demo_parallel.py`) in ~6 minutes
+- Loaded via parallel ingestion across 12 year-range shards (`POST /ingest/all`)
+- Locally reproducible in ~6 minutes via `python -m scripts.demo_parallel --workers 6`
 
 ## Architecture
 

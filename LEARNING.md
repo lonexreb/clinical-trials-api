@@ -93,13 +93,13 @@ This iterative approach meant the project was always in a working state — each
 - **Result**: 6 concurrent workers ingested **578,109 trials in 5.9 minutes** (1,633 records/sec) — a ~4-5x improvement over sequential.
 - Key insight: CT.gov doesn't rate-limit per IP, it rate-limits per connection. Multiple connections work fine.
 
-### Database at Scale (325,733 trials)
+### Database at Scale (578,109 trials)
 - 14,291 unique sponsors, 14 statuses, 6 phases
 - 99.8% data completeness on interventions, outcomes, and locations
 - Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
 - Top sponsors: Assiut University (550), Cairo University (476), NCI (469), AstraZeneca (400)
 - JSONB arrays working well — a single trial can have 10+ interventions, 20+ locations
-- `defer(raw_data)` is essential for export queries — without it, 325K records × 10-50KB = 3.2-16GB from DB
+- `defer(raw_data)` is essential for export queries — without it, 578K records × 10-50KB = 5.8-29GB from DB
 
 ---
 
@@ -188,14 +188,14 @@ This iterative approach meant the project was always in a working state — each
 
 ### Deployment
 - **Live URL**: `https://clinical-trials-etl-api-qx33.onrender.com`
-- **325,733 trials** in production PostgreSQL (basic-1gb, 10GB disk)
+- **578,109 trials** in production PostgreSQL (basic-1gb, 10GB disk) — full dataset, zero errors
 - Three services defined in single `render.yaml`: web (API), cron (daily ingestion), database
 - Blueprint deploy auto-provisions database and wires `DATABASE_URL` as a secret
 
 ### API Performance
 - `/health` — instant response, no DB dependency
 - `/trials/search` — sub-second response for filtered queries with pagination
-- `/trials/export?format=ndjson` — streams 325K+ records in batches of 1000 with gzip compression
+- `/trials/export?format=ndjson` — streams 578K+ records in batches of 1000 with gzip compression
 - `defer(raw_data)` in export query avoids transferring 10-50KB JSONB blobs per record
 
 ### Daily Cron
@@ -204,7 +204,7 @@ This iterative approach meant the project was always in a working state — each
 - Typically completes in under a minute for daily increments
 - Idempotent: `ON CONFLICT (trial_id) DO UPDATE` — safe to re-run
 
-### Data Quality (325K sample)
+### Data Quality (578K full dataset)
 - 14,291 unique sponsors, 14 statuses, 6 phases
 - 99.8% data completeness on interventions, outcomes, and locations
 - JSONB arrays verified: single trials with 10+ interventions, 20+ locations
@@ -236,7 +236,7 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 ### What Could Be Improved
 - **Initial over-engineering**: Early iterations had manual gzip in export generators and `stream_scalars()` for streaming — both were replaced with simpler solutions (GZipMiddleware, batched reads). Claude Code could have started simpler.
 - **`/ingest` vs CLI gap**: The `/ingest` endpoint doesn't support `--since` (only `year_start`/`year_end`). The daily cron uses the CLI. This asymmetry was caught late during code review — should have been designed upfront.
-- **325K vs 500K**: Production has 325K trials, not the full ~500K. The parallel ingestion script can load the rest but wasn't run to completion on the starter-plan database. Time/resource tradeoff.
+- **Full dataset loaded**: After upgrading to basic-1gb plan, all 578,109 trials were ingested via `POST /ingest/all` — 12 shards, zero errors.
 
 ---
 

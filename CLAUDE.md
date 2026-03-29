@@ -73,7 +73,7 @@ Migrations:
 - `001_initial_schema.py` — base table with JSONB raw_data + indexes
 - `002_jsonb_arrays_and_secondary_outcomes.py` — evolve flat columns to JSONB arrays
 
-## Database Stats (325,733 trials in production)
+## Database Stats (578,109 trials in production)
 - **14,291** unique sponsors, **14** statuses, **6** phases
 - Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
 - Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK
@@ -87,7 +87,7 @@ Migrations:
 
 ## Local vs Production
 - **Local**: docker-compose up → Postgres 15 + API with hot reload, batch size 500
-- **Production (Render)**: 325K trials, basic-1gb plan (10GB disk), batch size 500 (internal connection)
+- **Production (Render)**: 578K trials (full dataset), basic-1gb plan (10GB disk), batch size 500 (internal connection)
 - **Daily cron**: CLI script via render.yaml (`--since yesterday`), not the `/ingest` API endpoint
 - **`/ingest` endpoint**: Supports `query`, `max_pages`, `year_start`/`year_end`, `background` — does NOT support `--since`
 - **`/ingest/all` endpoint**: Queues all 12 year-range shards as sequential background jobs
