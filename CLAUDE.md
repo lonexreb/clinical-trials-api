@@ -3,6 +3,8 @@
 ## What This Is
 REST API that pulls clinical trial data from ClinicalTrials.gov, normalizes it into a unified schema, stores it in PostgreSQL, and serves it through a queryable API + bulk export. OpenAlex will consume the API directly.
 
+**Development**: ~2hr 50min active coding over 3 days. Most elapsed time was waiting (Render deploys, DB provisioning, ingestion runs, storage lockouts). Approach: research CT.gov API design first, get an end-to-end prototype working fast, then iteratively improve.
+
 ## Tech Stack
 - **Framework**: FastAPI (async, ASGI)
 - **Database**: PostgreSQL + SQLAlchemy async + Alembic migrations
@@ -10,7 +12,8 @@ REST API that pulls clinical trial data from ClinicalTrials.gov, normalizes it i
 - **Python**: 3.11+
 - **Testing**: pytest + pytest-asyncio + httpx (AsyncClient)
 - **Middleware**: GZipMiddleware (automatic compression for responses > 1KB)
-- **Deploy target**: Render (Docker + cron) — live at `https://clinical-trials-api-meoh.onrender.com`
+- **Deploy target**: Render (Docker + cron) — live at `https://clinical-trials-etl-api-qx33.onrender.com`
+- **DB plan**: basic-1gb (10GB disk)
 
 ## Key Directories
 ```
@@ -27,10 +30,11 @@ app/
 │   └── migrations/
 └── tests/           # Mirrors app/ structure
 scripts/
-├── run_ingestion.py    # CLI: full or incremental ingestion (--since, --query)
-├── demo_parallel.py    # Parallel initial load via year-range sharding
-├── demo_progressive.py # Progressive ingestion demo
-└── initial_load.sh     # Convenience script for full dataset load
+├── run_ingestion.py      # CLI: full or incremental ingestion (--since, --query)
+├── demo_parallel.py      # Parallel initial load via year-range sharding
+├── demo_progressive.py   # Progressive ingestion demo
+├── monitor_ingestion.py  # Live TUI monitor for background ingestion jobs
+└── initial_load.sh       # Convenience script for full dataset load
 ```
 
 ## Commands
@@ -69,11 +73,25 @@ Migrations:
 - `001_initial_schema.py` — base table with JSONB raw_data + indexes
 - `002_jsonb_arrays_and_secondary_outcomes.py` — evolve flat columns to JSONB arrays
 
-## Database Stats (66,773 trials loaded)
+## Database Stats (325,733 trials in production)
 - **14,291** unique sponsors, **14** statuses, **6** phases
 - Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
 - Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK
 - Data completeness: 99.8% have interventions, 99.9% have primary outcomes, 99.8% have locations
+- Full 500K dataset loadable via `python -m scripts.demo_parallel --workers 6` (~6 min)
+
+## Test Suite
+- **68 tests**, all passing in 0.24s (SQLite in-memory via aiosqlite)
+- Coverage: parser (29), API (15), ingestion (8), export (8), loader (6), health (2)
+- No external services required — tests use dependency injection for DB session
+
+## Local vs Production
+- **Local**: docker-compose up → Postgres 15 + API with hot reload, batch size 500
+- **Production (Render)**: 325K trials, basic-1gb plan (10GB disk), batch size 500 (internal connection)
+- **Daily cron**: CLI script via render.yaml (`--since yesterday`), not the `/ingest` API endpoint
+- **`/ingest` endpoint**: Supports `query`, `max_pages`, `year_start`/`year_end`, `background` — does NOT support `--since`
+- **`/ingest/all` endpoint**: Queues all 12 year-range shards as sequential background jobs
+- **`/ingest/status` endpoint**: Check job status + current DB count; used by `scripts/monitor_ingestion.py` TUI
 
 ## ClinicalTrials.gov API v2 — Critical Details
 - Base: `https://clinicaltrials.gov/api/v2/studies`
@@ -99,17 +117,19 @@ Migrations:
 - `GET /trials/search` — paginated (`?skip=0&limit=50`, max 100), filterable by `sponsor`, `status`, `phase`
 - `GET /trials/{trial_id}` — by NCT ID
 - `GET /trials/export?format=ndjson|csv` — streaming bulk export, batched DB reads (1000/batch), auto gzip via GZipMiddleware
-- `POST /ingest` — trigger ingestion from deployed service (supports `query`, `max_pages`, `year_start`, `year_end`)
+- `POST /ingest` — trigger ingestion (supports `query`, `max_pages`, `year_start`, `year_end`, `background`)
+- `POST /ingest/all` — queue all 12 year-range shards as sequential background jobs
+- `GET /ingest/status` — check background ingestion job status + current DB count
 - Errors: `{"detail": "…"}`, 422 validation, 404 not found
 
 ## Production Deployment (Render)
-- **Web service**: `clinical-trials-api` (Docker, starter plan)
-- **Database**: `clinical-trials-db` (PostgreSQL, starter plan)
-- **Cron job**: `clinical-trials-ingest` — runs daily at 2 AM UTC, `--since yesterday`
+- **Web service**: `clinical-trials-etl-api` (Docker, starter plan)
+- **Database**: `clinical-trials-etl-db` (PostgreSQL, basic-1gb, 10GB disk)
+- **Cron job**: `clinical-trials-etl-ingest` — runs daily at 2 AM UTC, `--since yesterday`
 - `render.yaml` defines all three resources with auto-wired DATABASE_URL
 
 ## OpenAlex Integration
-- Publicly reachable at `https://clinical-trials-api-meoh.onrender.com`
+- Publicly reachable at `https://clinical-trials-etl-api-qx33.onrender.com`
 - Standard REST + JSON responses
 - Open (no auth) during evaluation
 - Base URL + example curls documented in README
@@ -131,7 +151,9 @@ Migrations:
 
 ## References
 - See @GOALS.md for current phase and task status
-- See @LEARNING.md for what worked and what didn't
+- See @LEARNING.md for what worked, what didn't, local/production results, and AI harness usage
+- See @DEMO.md for the demo recording script (under 2 min)
+- See @take-home.md for the original project brief
 - CT.gov API: https://clinicaltrials.gov/data-api/api
 - CT.gov data structure: https://clinicaltrials.gov/data-api/about-api/study-data-structure
 - OpenAlex API: https://docs.openalex.org/how-to-use-the-api/api-overview

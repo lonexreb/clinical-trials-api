@@ -188,7 +188,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Monitor ingestion progress")
     parser.add_argument(
         "--url",
-        default="https://clinical-trials-api-meoh.onrender.com",
+        default="https://clinical-trials-etl-api-qx33.onrender.com",
         help="Base URL of the deployed API",
     )
     args = parser.parse_args()

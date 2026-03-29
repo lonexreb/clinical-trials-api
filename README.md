@@ -4,54 +4,45 @@ REST API that ingests clinical trial data from [ClinicalTrials.gov](https://clin
 
 ## Live API
 
-**Base URL**: `https://clinical-trials-api-meoh.onrender.com`
+**Base URL**: `https://clinical-trials-etl-api-qx33.onrender.com`
 
 ```bash
 # Health check
-curl https://clinical-trials-api-meoh.onrender.com/health
+curl https://clinical-trials-etl-api-qx33.onrender.com/health
 
 # Search trials (paginated)
-curl "https://clinical-trials-api-meoh.onrender.com/trials/search?limit=5"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?limit=5"
 
 # Single trial by NCT ID
-curl https://clinical-trials-api-meoh.onrender.com/trials/NCT00597909
+curl https://clinical-trials-etl-api-qx33.onrender.com/trials/NCT00597909
 
 # Filter by sponsor
-curl "https://clinical-trials-api-meoh.onrender.com/trials/search?sponsor=pfizer&limit=5"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sponsor=pfizer&limit=5"
 
 # Filter by status
-curl "https://clinical-trials-api-meoh.onrender.com/trials/search?status=recruiting&limit=5"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?status=recruiting&limit=5"
 
 # Filter by phase
-curl "https://clinical-trials-api-meoh.onrender.com/trials/search?phase=PHASE3&limit=5"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?phase=PHASE3&limit=5"
 
 # Bulk export (gzip-compressed NDJSON)
-curl "https://clinical-trials-api-meoh.onrender.com/trials/export?format=ndjson" --compressed > trials.ndjson
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" --compressed > trials.ndjson
 
 # Bulk export (gzip-compressed CSV)
-curl "https://clinical-trials-api-meoh.onrender.com/trials/export?format=csv" --compressed > trials.csv
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=csv" --compressed > trials.csv
 ```
 
 ## Current Database
-- **66,773 trials** ingested from ClinicalTrials.gov
+- **325,733 trials** ingested from ClinicalTrials.gov
 - **14,291** unique sponsors | **14** statuses | **6** phases
 - 99.8% data completeness on interventions, outcomes, and locations
 - Top statuses: COMPLETED (36K), RECRUITING (7.7K), TERMINATED (3.8K)
 - Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK, Pfizer
+- Full ~500K dataset loadable via parallel ingestion (`scripts/demo_parallel.py`) in ~6 minutes
 
 ## Architecture
 
-```
-ClinicalTrials.gov API v2        PostgreSQL          FastAPI
- ┌──────────────────┐       ┌───────────────┐    ┌──────────────────┐
- │  /api/v2/studies  │──────►│  trials table  │◄───│  /trials/search  │
- │  (JSON, paginated │ ETL  │  (JSONB arrays │    │  /trials/export  │
- │   via pageToken)  │      │   + flat cols) │    │  /health         │
- └──────────────────┘       └───────────────┘    └──────────────────┘
-         │                         │                      │
-    ingestion.py              loader.py              trials.py
-    parser.py              (batch upsert)           export.py
-```
+![Architecture Diagram](clinical-trial.png)
 
 ## Quick Start
 
@@ -171,6 +162,15 @@ curl -X POST "http://localhost:8000/ingest?query=cancer&max_pages=2"
 
 # Shard by year range (for parallel loading)
 curl -X POST "http://localhost:8000/ingest?year_start=2020&year_end=2023"
+
+# Run in background (returns job_id for status polling)
+curl -X POST "http://localhost:8000/ingest?year_start=2020&year_end=2023&background=true"
+
+# Queue all 12 year-range shards as sequential background jobs
+curl -X POST "http://localhost:8000/ingest/all"
+
+# Check ingestion job status and DB count
+curl http://localhost:8000/ingest/status
 ```
 
 ### Interactive Docs
@@ -227,12 +227,33 @@ python -m scripts.demo_parallel --workers 6
 
 **Performance:** 578,109 trials loaded in 5.9 minutes (1,633 records/sec) with 6 concurrent workers.
 
+### Live Ingestion Progress
+
+Screenshots from a production ingestion run using `POST /ingest/all` with the TUI monitor (`scripts/monitor_ingestion.py`). Each shard processes sequentially, fetching trials by year range:
+
+| ![Shards 1-3 running](live-demo-1.png) | ![Shards 4-5 complete](live-demo-2.png) |
+|:---:|:---:|
+| **33.8%** — First 3 shards complete (192K loaded) | **47.1%** — 5 shards done, shard 6 running |
+
+| ![Halfway through](live-demo-3.png) | ![Shards 1-7 complete](live-demo-4.png) |
+|:---:|:---:|
+| **47.1%** — Shard 6 (2018-2019) in progress | **~60%** — 7 shards complete |
+
+| ![Past 60%](live-demo-5.png) | ![8 shards done](live-demo-6.png) |
+|:---:|:---:|
+| **~65%** — Shard 8 (2021) running | **~75%** — 8 shards complete |
+
+| ![Almost done](live-demo-7.png) | ![Final shard](live-demo-8.png) |
+|:---:|:---:|
+| **~90%** — 11 of 12 shards complete, final shard running | **~97%** — All shards complete except last (2025-2026) |
+
 ### Production Ingestion (Render)
 
 On Render, ingestion runs as a **cron job** (not via HTTP endpoints) with direct internal DB access:
 - **Daily cron**: runs at 2 AM UTC via `render.yaml`, fetches only new/updated records
-- **Initial load**: trigger the cron job manually from the Render dashboard, or run `scripts/initial_load.sh` as a one-off job
+- **Initial load**: trigger the cron job manually from the Render dashboard, use `POST /ingest/all` to queue all shards, or run `scripts/initial_load.sh` as a one-off job
 - **Batch size**: 500 (uses internal DB connection, no external timeout limits)
+- **Monitor progress**: `python -m scripts.monitor_ingestion --url https://clinical-trials-etl-api-qx33.onrender.com` — live TUI dashboard for background ingestion jobs
 
 ## Schema
 
@@ -260,13 +281,13 @@ The API is designed for direct consumption by OpenAlex. Example workflow:
 
 ```bash
 # 1. Search for Phase 3 recruiting trials sponsored by Pfizer
-curl "https://clinical-trials-api-meoh.onrender.com/trials/search?sponsor=pfizer&phase=phase3&status=recruiting&limit=100"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sponsor=pfizer&phase=phase3&status=recruiting&limit=100"
 
 # 2. Bulk export all trials as NDJSON for batch processing
-curl --compressed "https://clinical-trials-api-meoh.onrender.com/trials/export?format=ndjson" -o all_trials.ndjson
+curl --compressed "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" -o all_trials.ndjson
 
 # 3. Get a specific trial by NCT ID
-curl "https://clinical-trials-api-meoh.onrender.com/trials/NCT12345678"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/NCT12345678"
 ```
 
 No authentication required. Standard JSON responses. CORS enabled for all origins.
@@ -311,9 +332,26 @@ alembic upgrade head
 - **pytest** + **pytest-asyncio** + **aiosqlite** for testing
 - **Render** for deployment (Docker + managed Postgres)
 
+## Daily-Update Capability
+
+The system supports fully automated, idempotent daily updates:
+
+- **Cron job** runs daily at 2 AM UTC via `render.yaml`, executing `python -m scripts.run_ingestion --since yesterday`.
+- **Incremental fetch**: uses ClinicalTrials.gov's `AREA[LastUpdatePostDate]RANGE[date,MAX]` filter to pull only new or updated records — typically completes in under a minute.
+- **Idempotent upserts**: `INSERT ... ON CONFLICT (trial_id) DO UPDATE` ensures running the ingest twice for the same day produces no duplicates.
+- **Batch processing**: starts within seconds of launch; a full day's updates (typically a few hundred to a few thousand records) finish well before the next day's window.
+
+## Development Approach
+
+Built in ~2 hours 50 minutes of active coding, distributed over 3 days. Most elapsed time was spent waiting — Render deployments, database provisioning, full ingestion runs (578K records), and a 12-hour storage lockout on the starter-plan database.
+
+**Approach**: Research the ClinicalTrials.gov API v2 design first (nested JSON structure, pagination model, date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
+
+See [LEARNING.md](LEARNING.md) for the full breakdown of what worked, what didn't, and key architectural decisions.
+
 ## Additional Docs
 
-- [LEARNING.md](LEARNING.md) — What worked and what didn't during development
+- [LEARNING.md](LEARNING.md) — What worked and what didn't, development timeline, AI harness usage
 - [CLAUDE.md](CLAUDE.md) — Developer guide and conventions
 - [GOALS.md](GOALS.md) — Session-by-session task tracking
 - [TEST.md](TEST.md) — Test plan and verification checklist

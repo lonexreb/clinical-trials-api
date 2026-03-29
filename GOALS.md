@@ -2,6 +2,8 @@
 
 > **Purpose**: Track progress across sessions. Update `[ ]` → `[x]` as work completes.
 > Referenced from CLAUDE.md via `@GOALS.md`.
+>
+> **Timeline**: ~2hr 50min active coding over 3 days. Sessions below were planned as 3-hour blocks, but actual coding was faster — most elapsed time was waiting on deploys, ingestion runs, and infrastructure. The approach was to research the CT.gov API first, get something working fast, then improve iteratively.
 
 ## Success Definition
 A working end-to-end system that ingests real trial records from ClinicalTrials.gov, stores them in a clean extensible PostgreSQL database, and serves them to OpenAlex via a public API. Focus is a functional MVP — precision can be improved later.
@@ -80,7 +82,7 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 - [x] Set env vars on deploy platform: `DATABASE_URL`, `ALLOWED_ORIGINS`
 - [x] Run `alembic upgrade head` on production DB
 - [x] Run ingestion against production DB
-- [x] Verify public URL returns JSON: `curl https://clinical-trials-api-meoh.onrender.com/trials/search?limit=5`
+- [x] Verify public URL returns JSON: `curl https://clinical-trials-etl-api-qx33.onrender.com/trials/search?limit=5`
 - [x] Verify export endpoint streams correctly
 - [x] Write README:
   - [x] Project overview (1 paragraph)
@@ -107,6 +109,12 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 - [x] Streaming page-by-page ingestion (constant memory regardless of dataset size)
 - [x] Batched export (1000 records/batch) with `defer(raw_data)` for memory efficiency
 - [x] Migration 002: JSONB arrays + secondary outcomes + data migration from flat columns
+- [x] Background ingestion with job tracking (`POST /ingest?background=true`)
+- [x] Bulk ingestion via `POST /ingest/all` — queues all 12 year-range shards
+- [x] Ingestion status monitoring via `GET /ingest/status`
+- [x] Live TUI monitor (`scripts/monitor_ingestion.py`) for tracking background jobs
+- [x] Upgraded Render Postgres to basic-1gb plan with 10GB disk
+- [x] Fixed DB connection leak: engine dispose + pool limits for background ingestion
 
 ---
 
