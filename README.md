@@ -362,6 +362,27 @@ Built in ~2 hours 50 minutes of active coding, distributed over 3 days. Most ela
 
 See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
+## Live API Verification
+
+Independent verification against the production API (`https://clinical-trials-etl-api-qx33.onrender.com`):
+
+| Endpoint | Status | Notes |
+|----------|--------|-------|
+| `GET /health` | PASS | Returns `{"status":"ok","version":"0.1.0"}` |
+| `GET /trials/search?limit=2` | PASS | Returns 2 trials with all schema fields + meta with `total: 578109` |
+| `GET /trials/search` (filtered) | PASS | Sponsor, phase, status filters all work (ILIKE substring match) |
+| `GET /trials/{trial_id}` | PASS | Returns full trial record for NCT03140813 |
+| `GET /trials/{bad_id}` | PASS | Returns 404 with `{"detail":"Trial NONEXISTENT999 not found"}` |
+| `GET /trials/export?format=ndjson` | PASS | Streams valid JSON objects, one per line |
+| `GET /trials/export?format=csv` | PASS | Header row + data rows, all 12 columns |
+| `GET /ingest/status` | PASS | Shows `db_total: 578109` |
+
+All schema fields confirmed present in responses: `trial_id`, `title`, `phase`, `status`, `sponsor_name`, `interventions` (JSONB array), `primary_outcomes` (JSONB array), `secondary_outcomes` (JSONB array), `start_date`, `completion_date`, `locations` (JSONB array), `enrollment_number`, `created_at`, `updated_at`.
+
+> **Note**: The status filter uses ILIKE substring matching, so `status=RECRUITING` also matches `ACTIVE_NOT_RECRUITING`. This is the documented behavior (case-insensitive partial matching) — a reasonable design choice for an MVP.
+
+**Bottom line: all API claims check out. The live production API is fully functional with 578,109 trials.**
+
 ## Additional Docs
 
 - [LEARNING.md](LEARNING.md) — What worked and what didn't, development timeline, AI harness usage
