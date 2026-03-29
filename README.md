@@ -1,3 +1,5 @@
+![Clinical Trials ETL Pipeline & API](banner.svg)
+
 # Clinical Trials ETL Pipeline & API
 
 REST API that ingests clinical trial data from [ClinicalTrials.gov](https://clinicaltrials.gov) API v2, normalizes it into a PostgreSQL database, and serves it through a queryable API with bulk export support. Built for [OpenAlex](https://openalex.org) integration.
