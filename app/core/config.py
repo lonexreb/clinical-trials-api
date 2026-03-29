@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_trials"
     ct_gov_base_url: str = "https://clinicaltrials.gov/api/v2/studies"
-    batch_size: int = 500
+    batch_size: int = 100
     log_level: str = "INFO"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
