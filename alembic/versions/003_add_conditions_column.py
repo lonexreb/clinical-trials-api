@@ -20,9 +20,22 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("trials", sa.Column("conditions", postgresql.JSONB(astext_type=sa.Text()), nullable=True))
-    op.create_index("ix_trials_updated_at", "trials", ["updated_at"])
+    # Create index concurrently to avoid blocking writes on 578K-row table.
+    # Must run outside transaction via autocommit_block.
+    with op.get_context().autocommit_block():
+        op.create_index(
+            "ix_trials_updated_at",
+            "trials",
+            ["updated_at"],
+            postgresql_concurrently=True,
+        )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_trials_updated_at", table_name="trials")
+    with op.get_context().autocommit_block():
+        op.drop_index(
+            "ix_trials_updated_at",
+            table_name="trials",
+            postgresql_concurrently=True,
+        )
     op.drop_column("trials", "conditions")
