@@ -41,3 +41,4 @@ ingestion_errors*.jsonl
 
 # Docker
 pgdata/
+media/

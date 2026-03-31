@@ -84,7 +84,13 @@ DB: 578,361 (100.0%)  |  Shards: 12/12  |  Errors: 0
 
 ## Architecture
 
-![Architecture Diagram](clinical-trial.png)
+![Architecture Diagram](diagrams/architecture.png)
+
+![Data Ingestion Flow](diagrams/dataflow.png)
+
+![Enriched Trial Schema](diagrams/schema.png)
+
+![OpenAlex Integration](diagrams/openalex.png)
 
 ## Quick Start
 
