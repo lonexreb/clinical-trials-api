@@ -416,13 +416,27 @@ The system supports fully automated, idempotent daily updates:
 
 ## Development Approach
 
-Built in ~8–9 hours of active coding, distributed over 4 days. Initial development took ~2h50m across 3 days; a fourth session (~5–6 hours) was spent addressing detailed evaluation feedback from OpenAlex's CEO — adding `updated_since` polling, keyset pagination for export, exact status matching, conditions extraction, and comprehensive tests. Most elapsed time beyond coding was waiting — Render deployments, database provisioning, full ingestion runs (578K records), and a 12-hour storage lockout on the starter-plan database.
+### Pre-Evaluation (Mar 26-28, ~8-9 hours active)
 
-**Approach**: Research the ClinicalTrials.gov API v2 design first (nested JSON structure, pagination model, date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
+**What was built**: End-to-end ETL pipeline — schema design, CT.gov API v2 integration, batch ingestion with parallel sharding, PostgreSQL storage with JSONB arrays, REST API (search + export + ingest), daily cron, Docker deployment on Render. 578K trials loaded with zero errors. 68 tests.
 
-**Post-evaluation improvements (Mar 31, 2026)**: After receiving detailed feedback from Jason (CEO, OpenAlex), addressed all identified gaps: added `updated_since` date filter for daily polling, replaced OFFSET pagination with keyset pagination in export, changed status filter from ILIKE substring to exact match, extracted `conditions` from CT.gov's `conditionsModule`, added `updated_at` index with `CREATE INDEX CONCURRENTLY`, and wrote 7 new tests (75 total). See the [PR](https://github.com/lonexreb/clinical-trials-api/pulls) and [LEARNING.md](LEARNING.md) for details.
+**Approach**: Research the CT.gov API design first (nested JSON, token pagination, inconsistent date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
 
-**Challenges faced along the way**: Fly.io asyncpg SSL incompatibility (migrated to Render), `stream_scalars()` silently returning 0 bytes on managed Postgres (switched to batched reads), Render starter-plan storage lockout at 325K trials (12-hour wait, then upgraded to basic-1gb), DB connection pool exhaustion with concurrent ingestion shards (reverted to sequential + pool limits), and batch size tuning across local vs remote connections. Each fix was 5-20 lines of code — the real cost was diagnosing and waiting.
+**Challenges**: Fly.io asyncpg SSL incompatibility (migrated to Render), `stream_scalars()` returning 0 bytes on managed Postgres (switched to batched reads), starter-plan storage lockout at 325K trials (12-hour wait, then upgraded to basic-1gb), DB connection pool exhaustion with concurrent shards (reverted to sequential + pool limits), batch size tuning across local vs remote connections. Each fix was 5-20 lines of code — the real cost was diagnosing and waiting.
+
+### Post-Evaluation (Mar 31, ~5-6 hours active)
+
+After receiving a detailed evaluation from Jason (CEO, OpenAlex) grading the submission B+ with specific gaps identified, every concern was addressed:
+
+- **`updated_since` polling endpoint** — added date filter to `/trials/search` so OpenAlex can poll daily for changes (PR #1)
+- **Keyset pagination** — replaced OFFSET with `WHERE id > last_id` in export for O(1) performance at any depth (PR #1)
+- **Exact status matching** — changed from ILIKE substring to `status == value.upper()` so RECRUITING no longer matches ACTIVE_NOT_RECRUITING (PR #1)
+- **Conditions extraction** — new JSONB column from CT.gov's `conditionsModule` (PR #1)
+- **Schema enrichment** — extracted study_type, eligibility_criteria, mesh_terms, references (PMIDs/DOIs), investigators, source field (PR #2)
+- **Sorting** — added `sort_by` + `order` (asc/desc) on 9 columns (PR #2)
+- **Bounded retry** — 3 attempts with exponential backoff on batch inserts (PR #2)
+- **Full re-ingestion** — 578,361 trials with all enrichment fields populated, fresh `updated_at` timestamps
+- **Tests** — 68 to 95 (27 new tests covering every fix)
 
 See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
