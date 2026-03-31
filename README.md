@@ -43,10 +43,10 @@ curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=csv
 
 ## Current Database
 
-**578,109 trials** — the full ClinicalTrials.gov dataset, ingested with zero errors.
+**578,361 trials** — the full ClinicalTrials.gov dataset, ingested and enriched with zero errors.
 
 ```
-DB: 578,109 (100.0%)  |  Shards: 12/12  |  Errors: 0
+DB: 578,361 (100.0%)  |  Shards: 12/12  |  Errors: 0
 ```
 
 - **14,291** unique sponsors | **14** statuses | **6** phases
@@ -95,7 +95,7 @@ docker-compose up
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_trials` | PostgreSQL connection string |
 | `CT_GOV_BASE_URL` | `https://clinicaltrials.gov/api/v2/studies` | ClinicalTrials.gov API base URL |
-| `BATCH_SIZE` | `500` | Max records per batch insert (use 50 for remote Postgres) |
+| `BATCH_SIZE` | `100` | Max records per batch insert (100 for Render, 500 for local) |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## API Reference
@@ -287,7 +287,7 @@ Screenshots from a production ingestion run using `POST /ingest/all` with the TU
 On Render, ingestion runs as a **cron job** (not via HTTP endpoints) with direct internal DB access:
 - **Daily cron**: runs at 2 AM UTC via `render.yaml`, fetches only new/updated records
 - **Initial load**: trigger the cron job manually from the Render dashboard, use `POST /ingest/all` to queue all shards, or run `scripts/initial_load.sh` as a one-off job
-- **Batch size**: 500 (uses internal DB connection, no external timeout limits)
+- **Batch size**: 100 (tuned for reliable writes under sustained load on Render Postgres)
 - **Monitor progress**: `python -m scripts.monitor_ingestion --url https://clinical-trials-etl-api-qx33.onrender.com` — live TUI dashboard for background ingestion jobs
 
 ## Schema
@@ -407,19 +407,31 @@ Independent verification against the production API (`https://clinical-trials-et
 | Endpoint | Status | Notes |
 |----------|--------|-------|
 | `GET /health` | PASS | Returns `{"status":"ok","version":"0.1.0"}` |
-| `GET /trials/search?limit=2` | PASS | Returns 2 trials with all schema fields + meta with `total: 578109` |
+| `GET /trials/search?limit=2` | PASS | Returns 2 trials with all 21 schema fields + meta with `total: 578361` |
 | `GET /trials/search` (filtered) | PASS | Sponsor/phase use ILIKE substring match; status uses exact match |
 | `GET /trials/{trial_id}` | PASS | Returns full trial record for NCT03140813 |
 | `GET /trials/{bad_id}` | PASS | Returns 404 with `{"detail":"Trial NONEXISTENT999 not found"}` |
 | `GET /trials/export?format=ndjson` | PASS | Streams valid JSON objects, one per line |
-| `GET /trials/export?format=csv` | PASS | Header row + data rows, all 12 columns |
-| `GET /ingest/status` | PASS | Shows `db_total: 578109` |
+| `GET /trials/export?format=csv` | PASS | Header row + data rows, all 19 export fields |
+| `GET /ingest/status` | PASS | Shows `db_total: 578361` |
+| `GET /trials/search?updated_since=2026-03-31` | PASS | Returns only trials updated since that date |
+| `GET /trials/search?updated_since=2026-04-01` | PASS | Returns 0 (nothing updated tomorrow) |
+| `GET /trials/search?sort_by=start_date&order=desc` | PASS | Sorted results |
+| `GET /trials/search?study_type=interventional` | PASS | Exact match filter |
 
-All schema fields confirmed present in responses: `trial_id`, `title`, `phase`, `status`, `sponsor_name`, `interventions` (JSONB array), `primary_outcomes` (JSONB array), `secondary_outcomes` (JSONB array), `start_date`, `completion_date`, `locations` (JSONB array), `enrollment_number`, `created_at`, `updated_at`.
+All schema fields confirmed present in responses: `trial_id`, `title`, `phase`, `status`, `sponsor_name`, `study_type`, `interventions` (JSONB), `primary_outcomes` (JSONB), `secondary_outcomes` (JSONB), `conditions` (JSONB), `eligibility_criteria` (TEXT), `mesh_terms` (JSONB), `references` (JSONB), `investigators` (JSONB), `start_date`, `completion_date`, `locations` (JSONB), `enrollment_number`, `source`, `created_at`, `updated_at`.
 
 > **Note**: The status filter uses exact matching (case-insensitive), so `status=RECRUITING` matches only trials with status `RECRUITING`, not `ACTIVE_NOT_RECRUITING`. Sponsor and phase filters use ILIKE substring matching for flexible free-text search.
 
-**Bottom line: all API claims check out. The live production API is fully functional with 578,109 trials.**
+**Bottom line: all API claims check out. The live production API is fully functional with 578,361 trials.**
+
+### Post-Evaluation Fixes Verified
+
+After receiving detailed feedback, all identified gaps were addressed and verified against the live API:
+
+![All review issues fixed](updated-fix.png)
+
+![Re-ingestion with 252 new trials and enrichment verification](252-new-clinical-records-added.png)
 
 ## Additional Docs
 

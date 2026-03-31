@@ -8,13 +8,12 @@
 | Suite | File | Tests | Status |
 |-------|------|-------|--------|
 | Health | `tests/test_health.py` | 2 | Pass |
-| Parser (dates) | `tests/test_parser.py` | 11 | Pass |
-| Parser (studies) | `tests/test_parser.py` | 18 | Pass |
+| Parser (dates + studies + enrichment) | `tests/test_parser.py` | 47 | Pass |
 | Loader | `tests/test_loader.py` | 6 | Pass |
 | Ingestion | `tests/test_ingestion.py` | 8 | Pass |
-| Trials API | `tests/test_trials_api.py` | 15 | Pass |
-| Export | `tests/test_export.py` | 8 | Pass |
-| **Total** | | **68** | **All Pass** |
+| Trials API (search + filters + sorting) | `tests/test_trials_api.py` | 24 | Pass |
+| Export (NDJSON + CSV) | `tests/test_export.py` | 8 | Pass |
+| **Total** | | **95** | **All Pass** |
 
 ---
 

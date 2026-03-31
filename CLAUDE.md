@@ -82,7 +82,7 @@ Migrations:
 - `003_add_conditions_column.py` — add conditions JSONB column + `updated_at` index (concurrent)
 - `004_add_schema_enrichment_columns.py` — add study_type, eligibility_criteria, mesh_terms, references, investigators, source
 
-## Database Stats (578,109 trials in production)
+## Database Stats (578,361 trials in production)
 - **14,291** unique sponsors, **14** statuses, **6** phases
 - Top statuses: COMPLETED (36K), UNKNOWN (10K), RECRUITING (7.7K)
 - Top sponsors: Assiut University, Cairo University, NCI, AstraZeneca, GSK
@@ -97,7 +97,7 @@ Migrations:
 
 ## Local vs Production
 - **Local**: docker-compose up → Postgres 15 + API with hot reload, batch size 500
-- **Production (Render)**: 578K trials (full dataset), basic-1gb plan (10GB disk), batch size 500 (internal connection)
+- **Production (Render)**: 578K trials (full dataset, enriched), basic-1gb plan (10GB disk), batch size 100
 - **Daily cron**: CLI script via render.yaml (`--since yesterday`), not the `/ingest` API endpoint
 - **`/ingest` endpoint**: Supports `query`, `max_pages`, `year_start`/`year_end`, `background` — does NOT support `--since`
 - **`/ingest/all` endpoint**: Queues all 12 year-range shards as sequential background jobs

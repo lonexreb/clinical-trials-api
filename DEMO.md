@@ -2,6 +2,8 @@
 
 > Under 2 minutes. Four steps per the brief: run daily ingest → check DB rows → call export → call search.
 
+**Demo Video**: [Watch on Loom](https://www.loom.com/share/ab906165ff08458a8dd7a31e7ebb2012)
+
 **Live URL**: `https://clinical-trials-etl-api-qx33.onrender.com`
 
 ---

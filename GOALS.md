@@ -10,7 +10,7 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 
 ## Deliverables
 1. [x] Public GitHub repository with all source code
-2. [ ] Short demo video walking through ingestion → storage → API call
+2. [x] Short demo video walking through ingestion → storage → API call
 3. [x] Production-ready URL where the API is live and reachable by OpenAlex
 4. [x] Documentation: README, setup steps, env vars, example request
 
@@ -92,7 +92,7 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
   - [x] Architecture diagram (text-based)
   - [x] OpenAlex integration example
   - [x] Daily incremental update instructions with cron example
-- [ ] Record demo video: show ingestion → DB query → API call → export
+- [x] Record demo video: show ingestion → DB query → API call → export
 - [x] Final commit + push
 
 **Done when**: Public URL returns correct JSON, README is complete, video is recorded, repo is clean.
@@ -152,6 +152,23 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 - [x] Updated all documentation (README, CLAUDE.md, GOALS.md, LEARNING.md) with new schema, test counts, and features
 
 **Done when**: All evaluation concerns addressed, 95 tests pass, docs consistent.
+
+---
+
+## Session 7 — Production Re-Ingestion with Enrichment (Mar 31, 2026)
+> Goal: Re-ingest the full dataset so all 578K records have enrichment fields populated and fresh `updated_at` timestamps.
+
+- [x] Recreated Render services with fresh DB (basic-1gb, 10GB disk)
+- [x] Fixed batch size: default 100 in code, env var updated via Render API
+- [x] Initial load: 578,109 trials, zero errors, all 12 shards
+- [x] Re-ingestion with enriched parser: 578,361 trials (252 new from CT.gov), zero errors
+- [x] Verified enrichment fields populated: conditions, study_type, mesh_terms, references, investigators, eligibility_criteria
+- [x] Verified `updated_since` filter works with fresh timestamps
+- [x] Verified OpenAlex workflow: backfill via export, daily poll via `updated_since`, filtered search
+- [x] Added review fix screenshots to README (updated-fix.png, 252-new-clinical-records-added.png)
+- [x] Updated all docs with final trial count (578,361), test count (95), batch size (100)
+
+**Done when**: All review gaps verified fixed on live API, docs updated, screenshots included.
 
 ---
 
