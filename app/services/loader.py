@@ -19,6 +19,7 @@ UPDATE_COLUMNS = [
     "interventions",
     "primary_outcomes",
     "secondary_outcomes",
+    "conditions",
     "start_date",
     "completion_date",
     "locations",

@@ -27,6 +27,9 @@ curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?status=rec
 # Filter by phase
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?phase=PHASE3&limit=5"
 
+# Poll for recently updated trials (OpenAlex daily sync)
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?updated_since=2026-03-30&limit=50"
+
 # Bulk export (gzip-compressed NDJSON)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" --compressed > trials.ndjson
 
@@ -119,6 +122,9 @@ curl "http://localhost:8000/trials/search?phase=PHASE3"
 
 # Combined filters
 curl "http://localhost:8000/trials/search?sponsor=novartis&status=completed&limit=20"
+
+# Poll for recently updated trials (for daily sync)
+curl "http://localhost:8000/trials/search?updated_since=2026-03-30"
 ```
 
 Response:
@@ -134,6 +140,7 @@ Response:
       "interventions": [{"type": "DRUG", "name": "Drug X"}],
       "primary_outcomes": [{"measure": "Overall Survival", "description": "Time from..."}],
       "secondary_outcomes": null,
+      "conditions": ["Lung Cancer", "Non-Small Cell Lung Cancer"],
       "start_date": "2023-01-15",
       "completion_date": "2025-12-31",
       "locations": [{"facility": "Hospital A", "city": "Boston", "country": "United States"}],
@@ -166,7 +173,7 @@ curl "http://localhost:8000/trials/export?format=ndjson" --compressed > trials.n
 curl "http://localhost:8000/trials/export?format=csv" --compressed > trials.csv
 ```
 
-Export streams data in batches of 1000 from the database, excluding the large `raw_data` field to keep responses fast.
+Export streams data in batches of 1000 using keyset pagination for consistent performance at any depth, excluding the large `raw_data` field to keep responses fast.
 
 ### Trigger Ingestion (from deployed service)
 ```bash
@@ -282,11 +289,14 @@ The `trials` table stores both structured columns for fast queries and JSONB arr
 | `interventions` | JSONB | Full array of intervention dicts |
 | `primary_outcomes` | JSONB | Full array of primary outcome dicts |
 | `secondary_outcomes` | JSONB | Full array of secondary outcome dicts |
+| `conditions` | JSONB | List of condition/disease strings |
 | `start_date` | DATE | Study start date |
 | `completion_date` | DATE | Expected/actual completion |
 | `locations` | JSONB | Full array of location dicts |
 | `enrollment_number` | INTEGER | Target/actual enrollment |
 | `raw_data` | JSONB | Complete original CT.gov record |
+
+Indexes: `trial_id` (unique), `sponsor_name`, `status`, `phase`, `updated_at`.
 
 ## OpenAlex Integration
 
@@ -296,10 +306,13 @@ The API is designed for direct consumption by OpenAlex. Example workflow:
 # 1. Search for Phase 3 recruiting trials sponsored by Pfizer
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sponsor=pfizer&phase=phase3&status=recruiting&limit=100"
 
-# 2. Bulk export all trials as NDJSON for batch processing
+# 2. Poll for recently updated trials (daily sync)
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?updated_since=2026-03-30&limit=50"
+
+# 3. Bulk export all trials as NDJSON for batch processing
 curl --compressed "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" -o all_trials.ndjson
 
-# 3. Get a specific trial by NCT ID
+# 4. Get a specific trial by NCT ID
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/NCT12345678"
 ```
 
@@ -356,9 +369,11 @@ The system supports fully automated, idempotent daily updates:
 
 ## Development Approach
 
-Built in ~2 hours 50 minutes of active coding, distributed over 3 days. Most elapsed time was spent waiting — Render deployments, database provisioning, full ingestion runs (578K records), and a 12-hour storage lockout on the starter-plan database.
+Built in ~8–9 hours of active coding, distributed over 4 days. Initial development took ~2h50m across 3 days; a fourth session (~5–6 hours) was spent addressing detailed evaluation feedback from OpenAlex's CEO — adding `updated_since` polling, keyset pagination for export, exact status matching, conditions extraction, and comprehensive tests. Most elapsed time beyond coding was waiting — Render deployments, database provisioning, full ingestion runs (578K records), and a 12-hour storage lockout on the starter-plan database.
 
 **Approach**: Research the ClinicalTrials.gov API v2 design first (nested JSON structure, pagination model, date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
+
+**Post-evaluation improvements (Mar 31, 2026)**: After receiving detailed feedback from Jason (CEO, OpenAlex), addressed all identified gaps: added `updated_since` date filter for daily polling, replaced OFFSET pagination with keyset pagination in export, changed status filter from ILIKE substring to exact match, extracted `conditions` from CT.gov's `conditionsModule`, added `updated_at` index with `CREATE INDEX CONCURRENTLY`, and wrote 7 new tests (75 total). See the [PR](https://github.com/lonexreb/clinical-trials-api/pulls) and [LEARNING.md](LEARNING.md) for details.
 
 **Challenges faced along the way**: Fly.io asyncpg SSL incompatibility (migrated to Render), `stream_scalars()` silently returning 0 bytes on managed Postgres (switched to batched reads), Render starter-plan storage lockout at 325K trials (12-hour wait, then upgraded to basic-1gb), DB connection pool exhaustion with concurrent ingestion shards (reverted to sequential + pool limits), and batch size tuning across local vs remote connections. Each fix was 5-20 lines of code — the real cost was diagnosing and waiting.
 
@@ -372,7 +387,7 @@ Independent verification against the production API (`https://clinical-trials-et
 |----------|--------|-------|
 | `GET /health` | PASS | Returns `{"status":"ok","version":"0.1.0"}` |
 | `GET /trials/search?limit=2` | PASS | Returns 2 trials with all schema fields + meta with `total: 578109` |
-| `GET /trials/search` (filtered) | PASS | Sponsor, phase, status filters all work (ILIKE substring match) |
+| `GET /trials/search` (filtered) | PASS | Sponsor/phase use ILIKE substring match; status uses exact match |
 | `GET /trials/{trial_id}` | PASS | Returns full trial record for NCT03140813 |
 | `GET /trials/{bad_id}` | PASS | Returns 404 with `{"detail":"Trial NONEXISTENT999 not found"}` |
 | `GET /trials/export?format=ndjson` | PASS | Streams valid JSON objects, one per line |
@@ -381,7 +396,7 @@ Independent verification against the production API (`https://clinical-trials-et
 
 All schema fields confirmed present in responses: `trial_id`, `title`, `phase`, `status`, `sponsor_name`, `interventions` (JSONB array), `primary_outcomes` (JSONB array), `secondary_outcomes` (JSONB array), `start_date`, `completion_date`, `locations` (JSONB array), `enrollment_number`, `created_at`, `updated_at`.
 
-> **Note**: The status filter uses ILIKE substring matching, so `status=RECRUITING` also matches `ACTIVE_NOT_RECRUITING`. This is the documented behavior (case-insensitive partial matching) — a reasonable design choice for an MVP.
+> **Note**: The status filter uses exact matching (case-insensitive), so `status=RECRUITING` matches only trials with status `RECRUITING`, not `ACTIVE_NOT_RECRUITING`. Sponsor and phase filters use ILIKE substring matching for flexible free-text search.
 
 **Bottom line: all API claims check out. The live production API is fully functional with 578,109 trials.**
 

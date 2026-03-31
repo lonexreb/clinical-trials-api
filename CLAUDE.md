@@ -3,7 +3,7 @@
 ## What This Is
 REST API that pulls clinical trial data from ClinicalTrials.gov, normalizes it into a unified schema, stores it in PostgreSQL, and serves it through a queryable API + bulk export. OpenAlex will consume the API directly.
 
-**Development**: ~2hr 50min active coding over 3 days. Most elapsed time was waiting (Render deploys, DB provisioning, ingestion runs, storage lockouts). Approach: research CT.gov API design first, get an end-to-end prototype working fast, then iteratively improve.
+**Development**: ~8-9 hours of active work over 3 days (Mar 26-28), plus a post-evaluation fix session on Mar 31. Originally reported as ~2hr 50min, which undercounted debugging, log reading, and documentation time. Most elapsed time was waiting (Render deploys, DB provisioning, ingestion runs, 12-hour storage lockout). Approach: research CT.gov API design first, get an end-to-end prototype working fast, then iteratively improve.
 
 ## Tech Stack
 - **Framework**: FastAPI (async, ASGI)
@@ -60,6 +60,7 @@ Single `trials` table with these columns:
 - `interventions` (JSONB, nullable) — full array of intervention dicts from CT.gov
 - `primary_outcomes` (JSONB, nullable) — full array of primary outcome dicts
 - `secondary_outcomes` (JSONB, nullable) — full array of secondary outcome dicts
+- `conditions` (JSONB, nullable) — list of condition/disease strings from conditionsModule
 - `start_date` (DATE, nullable)
 - `completion_date` (DATE, nullable)
 - `locations` (JSONB, nullable) — full array of location dicts from CT.gov
@@ -67,11 +68,12 @@ Single `trials` table with these columns:
 - `raw_data` (JSONB) — full original record for extensibility
 - `created_at` / `updated_at` (TIMESTAMPTZ)
 
-Indexes: `trial_id`, `sponsor_name`, `status`, `phase`.
+Indexes: `trial_id`, `sponsor_name`, `status`, `phase`, `updated_at`.
 
 Migrations:
 - `001_initial_schema.py` — base table with JSONB raw_data + indexes
 - `002_jsonb_arrays_and_secondary_outcomes.py` — evolve flat columns to JSONB arrays
+- `003_add_conditions_column.py` — add conditions JSONB column + `updated_at` index (concurrent)
 
 ## Database Stats (578,109 trials in production)
 - **14,291** unique sponsors, **14** statuses, **6** phases
@@ -81,8 +83,9 @@ Migrations:
 - Full 500K dataset loadable via `python -m scripts.demo_parallel --workers 6` (~6 min)
 
 ## Test Suite
-- **68 tests**, all passing in 0.24s (SQLite in-memory via aiosqlite)
-- Coverage: parser (29), API (15), ingestion (8), export (8), loader (6), health (2)
+- **75 tests**, all passing in <1s (SQLite in-memory via aiosqlite)
+- Coverage: parser (33), API (17), ingestion (8), export (8), loader (6), health (2)
+- Includes tests for: `updated_since` filter, exact status matching, conditions extraction/null handling
 - No external services required — tests use dependency injection for DB session
 
 ## Local vs Production
@@ -114,9 +117,9 @@ Migrations:
 
 ## API Endpoints (Our API)
 - `GET /health` — no DB, always 200
-- `GET /trials/search` — paginated (`?skip=0&limit=50`, max 100), filterable by `sponsor`, `status`, `phase`
+- `GET /trials/search` — paginated (`?skip=0&limit=50`, max 100), filterable by `sponsor`, `status` (exact match), `phase`, `updated_since` (date)
 - `GET /trials/{trial_id}` — by NCT ID
-- `GET /trials/export?format=ndjson|csv` — streaming bulk export, batched DB reads (1000/batch), auto gzip via GZipMiddleware
+- `GET /trials/export?format=ndjson|csv` — streaming bulk export, keyset pagination (1000/batch), auto gzip via GZipMiddleware
 - `POST /ingest` — trigger ingestion (supports `query`, `max_pages`, `year_start`, `year_end`, `background`)
 - `POST /ingest/all` — queue all 12 year-range shards as sequential background jobs
 - `GET /ingest/status` — check background ingestion job status + current DB count

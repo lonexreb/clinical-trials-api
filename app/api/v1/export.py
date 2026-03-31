@@ -25,6 +25,7 @@ EXPORT_FIELDS = [
     "interventions",
     "primary_outcomes",
     "secondary_outcomes",
+    "conditions",
     "start_date",
     "completion_date",
     "locations",
@@ -35,13 +36,14 @@ BATCH_SIZE = 1000
 
 
 async def _stream_trials(session: AsyncSession) -> AsyncIterator[Trial]:
-    """Yield trials in batches to avoid loading all into memory."""
-    offset = 0
+    """Yield trials in batches using keyset pagination for consistent performance."""
+    last_id = 0
     while True:
         result = await session.scalars(
             select(Trial)
             .options(defer(Trial.raw_data))
-            .offset(offset)
+            .where(Trial.id > last_id)
+            .order_by(Trial.id)
             .limit(BATCH_SIZE)
         )
         batch = list(result.all())
@@ -49,7 +51,7 @@ async def _stream_trials(session: AsyncSession) -> AsyncIterator[Trial]:
             break
         for trial in batch:
             yield trial
-        offset += BATCH_SIZE
+        last_id = batch[-1].id
 
 
 async def _generate_ndjson(session: AsyncSession) -> AsyncIterator[str]:

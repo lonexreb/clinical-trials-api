@@ -30,6 +30,9 @@ class Trial(Base):
     )
     start_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     completion_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    conditions: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     locations: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
@@ -52,6 +55,7 @@ class Trial(Base):
         Index("ix_trials_sponsor_name", "sponsor_name"),
         Index("ix_trials_status", "status"),
         Index("ix_trials_phase", "phase"),
+        Index("ix_trials_updated_at", "updated_at"),
     )
 
     def __repr__(self) -> str:

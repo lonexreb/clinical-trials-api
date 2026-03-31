@@ -71,6 +71,17 @@ async def test_filter_by_status(client: AsyncClient, seed_trials: list[Trial]) -
 
 
 @pytest.mark.asyncio
+async def test_filter_by_status_exact_match(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Status filter uses exact match — RECRUITING should NOT match ACTIVE_NOT_RECRUITING."""
+    response = await client.get("/trials/search?status=RECRUITING")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 2
+    for trial in data["data"]:
+        assert trial["status"] == "RECRUITING"
+
+
+@pytest.mark.asyncio
 async def test_filter_by_phase(client: AsyncClient, seed_trials: list[Trial]) -> None:
     response = await client.get("/trials/search?phase=phase3")
     assert response.status_code == 200
@@ -87,7 +98,7 @@ async def test_combined_filters(client: AsyncClient, seed_trials: list[Trial]) -
     assert len(data["data"]) == 2
     for trial in data["data"]:
         assert "pfizer" in trial["sponsor_name"].lower()
-        assert "recruiting" in trial["status"].lower()
+        assert trial["status"] == "RECRUITING"
 
 
 @pytest.mark.asyncio
@@ -97,6 +108,27 @@ async def test_combined_filters_with_phase(client: AsyncClient, seed_trials: lis
     data = response.json()
     assert len(data["data"]) == 1
     assert data["data"][0]["trial_id"] == "NCT00000003"
+
+
+@pytest.mark.asyncio
+async def test_filter_updated_since(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Filter trials by updated_since date."""
+    response = await client.get("/trials/search?updated_since=2099-01-01")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 0
+
+    response = await client.get("/trials/search?updated_since=2000-01-01")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_filter_updated_since_invalid_date(client: AsyncClient) -> None:
+    """Invalid date format returns 422."""
+    response = await client.get("/trials/search?updated_since=not-a-date")
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -139,6 +171,7 @@ async def test_response_includes_jsonb_fields(client: AsyncClient, seed_trials: 
     assert data["interventions"] == [{"type": "DRUG", "name": "TestDrug-A"}]
     assert data["primary_outcomes"][0]["measure"] == "Overall Survival"
     assert data["secondary_outcomes"][0]["measure"] == "Quality of Life"
+    assert data["conditions"] == ["Lung Cancer", "Non-Small Cell Lung Cancer"]
     assert data["locations"][0]["country"] == "United States"
 
 
@@ -151,4 +184,5 @@ async def test_response_null_jsonb_fields(client: AsyncClient, seed_trials: list
     assert data["interventions"] is None
     assert data["primary_outcomes"] is None
     assert data["secondary_outcomes"] is None
+    assert data["conditions"] is None
     assert data["locations"] is None

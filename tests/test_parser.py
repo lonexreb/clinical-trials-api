@@ -87,6 +87,9 @@ COMPLETE_STUDY: dict[str, object] = {
                 },
             ],
         },
+        "conditionsModule": {
+            "conditions": ["Lung Cancer", "Non-Small Cell Lung Cancer"],
+        },
         "contactsLocationsModule": {
             "locations": [
                 {"facility": "Hospital A", "city": "New York", "country": "United States"},
@@ -136,6 +139,51 @@ class TestParseStudy:
         assert len(result["locations"]) == 2
         assert result["locations"][0]["country"] == "United States"
         assert result["locations"][1]["city"] == "London"
+
+    def test_conditions_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["conditions"] is not None
+        assert len(result["conditions"]) == 2
+        assert result["conditions"][0] == "Lung Cancer"
+        assert result["conditions"][1] == "Non-Small Cell Lung Cancer"
+
+    def test_missing_conditions_module(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["conditions"] is None
+
+    def test_empty_conditions_list(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+                "conditionsModule": {"conditions": []},
+            },
+        }
+        result = parse_study(study)
+        assert result["conditions"] is None
+
+    def test_null_conditions_module(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+                "conditionsModule": None,
+            },
+        }
+        result = parse_study(study)
+        assert result["conditions"] is None
 
     def test_missing_interventions_module(self) -> None:
         study: dict[str, object] = {
