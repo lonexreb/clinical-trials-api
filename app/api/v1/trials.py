@@ -1,5 +1,7 @@
 """Trial API endpoints: search, get by ID."""
 
+import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +20,7 @@ async def search_trials(
     sponsor: str | None = Query(default=None),
     status: str | None = Query(default=None),
     phase: str | None = Query(default=None),
+    updated_since: datetime.date | None = Query(default=None),
     session: AsyncSession = Depends(get_db),
 ) -> TrialListResponse:
     """Search trials with pagination and optional filtering."""
@@ -28,11 +31,14 @@ async def search_trials(
         query = query.where(Trial.sponsor_name.ilike(f"%{sponsor}%"))
         count_query = count_query.where(Trial.sponsor_name.ilike(f"%{sponsor}%"))
     if status:
-        query = query.where(Trial.status.ilike(f"%{status}%"))
-        count_query = count_query.where(Trial.status.ilike(f"%{status}%"))
+        query = query.where(func.upper(Trial.status) == status.upper())
+        count_query = count_query.where(func.upper(Trial.status) == status.upper())
     if phase:
         query = query.where(Trial.phase.ilike(f"%{phase}%"))
         count_query = count_query.where(Trial.phase.ilike(f"%{phase}%"))
+    if updated_since:
+        query = query.where(Trial.updated_at >= updated_since)
+        count_query = count_query.where(Trial.updated_at >= updated_since)
 
     total = await session.scalar(count_query) or 0
     results = await session.scalars(query.offset(skip).limit(limit))

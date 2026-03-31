@@ -16,6 +16,7 @@ class ParsedTrial(TypedDict):
     interventions: list[dict[str, object]] | None
     primary_outcomes: list[dict[str, object]] | None
     secondary_outcomes: list[dict[str, object]] | None
+    conditions: list[str] | None
     start_date: datetime.date | None
     completion_date: datetime.date | None
     locations: list[dict[str, object]] | None
@@ -108,6 +109,7 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
     arms_mod = _ensure_dict(protocol.get("armsInterventionsModule", {}))
     outcomes_mod = _ensure_dict(protocol.get("outcomesModule", {}))
     contacts_mod = _ensure_dict(protocol.get("contactsLocationsModule", {}))
+    conditions_mod = _ensure_dict(protocol.get("conditionsModule", {}))
 
     # trial_id and title (required)
     trial_id = str(id_mod.get("nctId", "UNKNOWN"))
@@ -134,6 +136,14 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
 
     # secondary outcomes: store full array of dicts
     secondary_outcomes = _parse_list_of_dicts(outcomes_mod.get("secondaryOutcomes"))
+
+    # conditions: list of strings from conditionsModule
+    raw_conditions = conditions_mod.get("conditions")
+    conditions: list[str] | None = None
+    if isinstance(raw_conditions, list) and len(raw_conditions) > 0:
+        conditions = [str(c) for c in raw_conditions if c]
+        if not conditions:
+            conditions = None
 
     # dates
     start_date_struct = _ensure_dict(status_mod.get("startDateStruct", {}))
@@ -166,6 +176,7 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
         interventions=interventions,
         primary_outcomes=primary_outcomes,
         secondary_outcomes=secondary_outcomes,
+        conditions=conditions,
         start_date=start_date,
         completion_date=completion_date,
         locations=locations,

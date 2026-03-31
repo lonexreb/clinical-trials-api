@@ -27,6 +27,9 @@ curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?status=rec
 # Filter by phase
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?phase=PHASE3&limit=5"
 
+# Poll for recently updated trials (OpenAlex daily sync)
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?updated_since=2026-03-30&limit=50"
+
 # Bulk export (gzip-compressed NDJSON)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" --compressed > trials.ndjson
 
@@ -119,6 +122,9 @@ curl "http://localhost:8000/trials/search?phase=PHASE3"
 
 # Combined filters
 curl "http://localhost:8000/trials/search?sponsor=novartis&status=completed&limit=20"
+
+# Poll for recently updated trials (for daily sync)
+curl "http://localhost:8000/trials/search?updated_since=2026-03-30"
 ```
 
 Response:
@@ -134,6 +140,7 @@ Response:
       "interventions": [{"type": "DRUG", "name": "Drug X"}],
       "primary_outcomes": [{"measure": "Overall Survival", "description": "Time from..."}],
       "secondary_outcomes": null,
+      "conditions": ["Lung Cancer", "Non-Small Cell Lung Cancer"],
       "start_date": "2023-01-15",
       "completion_date": "2025-12-31",
       "locations": [{"facility": "Hospital A", "city": "Boston", "country": "United States"}],
@@ -166,7 +173,7 @@ curl "http://localhost:8000/trials/export?format=ndjson" --compressed > trials.n
 curl "http://localhost:8000/trials/export?format=csv" --compressed > trials.csv
 ```
 
-Export streams data in batches of 1000 from the database, excluding the large `raw_data` field to keep responses fast.
+Export streams data in batches of 1000 using keyset pagination for consistent performance at any depth, excluding the large `raw_data` field to keep responses fast.
 
 ### Trigger Ingestion (from deployed service)
 ```bash
@@ -372,7 +379,7 @@ Independent verification against the production API (`https://clinical-trials-et
 |----------|--------|-------|
 | `GET /health` | PASS | Returns `{"status":"ok","version":"0.1.0"}` |
 | `GET /trials/search?limit=2` | PASS | Returns 2 trials with all schema fields + meta with `total: 578109` |
-| `GET /trials/search` (filtered) | PASS | Sponsor, phase, status filters all work (ILIKE substring match) |
+| `GET /trials/search` (filtered) | PASS | Sponsor/phase use ILIKE substring match; status uses exact match |
 | `GET /trials/{trial_id}` | PASS | Returns full trial record for NCT03140813 |
 | `GET /trials/{bad_id}` | PASS | Returns 404 with `{"detail":"Trial NONEXISTENT999 not found"}` |
 | `GET /trials/export?format=ndjson` | PASS | Streams valid JSON objects, one per line |

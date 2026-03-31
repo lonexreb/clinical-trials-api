@@ -269,12 +269,12 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 | Single `trials` table + JSONB arrays | Scalar columns for querying, JSONB arrays for full data fidelity |
 | `pageToken` pagination (CT.gov) vs offset | CT.gov API requires token-based pagination |
 | `skip/limit` pagination (our API) vs cursor | Simpler for consumers, acceptable at MVP scale |
-| ILIKE for filtering | Case-insensitive partial matching without extra indexes |
+| ILIKE for sponsor/phase, exact match for status | Substring matching for free-text fields, exact match for enumerated values |
 | Render over Fly.io | Standard Postgres URLs, simpler deployment, no SSL workarounds |
 | Batch size 500 for internal ingestion | Internal Render connection avoids the timeout issues of external connections |
 | JSONB arrays over flat columns | Preserves all interventions/outcomes/locations instead of just first |
 | GZipMiddleware over manual gzip | Automatic compression, keeps export code simple |
-| Batched offset/limit for export | Avoids stream_scalars issues while keeping memory bounded |
+| Keyset pagination for export | Consistent O(1) performance per batch regardless of depth, replaces OFFSET |
 | `defer(raw_data)` in export query | Excludes 10-50KB JSONB blobs the response doesn't need |
 | `filter.advanced` for incremental sync | Only fetch updated studies instead of re-ingesting everything |
 | Parallel sharding by year range | 6x throughput vs sequential; CT.gov rate limits are per-connection |

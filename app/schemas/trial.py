@@ -12,6 +12,7 @@ class TrialBase(BaseModel):
     interventions: list[dict[str, object]] | None = None
     primary_outcomes: list[dict[str, object]] | None = None
     secondary_outcomes: list[dict[str, object]] | None = None
+    conditions: list[str] | None = None
     start_date: datetime.date | None = None
     completion_date: datetime.date | None = None
     locations: list[dict[str, object]] | None = None

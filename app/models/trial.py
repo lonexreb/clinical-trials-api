@@ -30,6 +30,9 @@ class Trial(Base):
     )
     start_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     completion_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    conditions: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
     locations: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )

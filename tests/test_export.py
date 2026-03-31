@@ -25,6 +25,7 @@ async def test_export_ndjson_format(client: AsyncClient, seed_trials: list[Trial
         assert "status" in parsed
         assert "interventions" in parsed
         assert "secondary_outcomes" in parsed
+        assert "conditions" in parsed
         assert "locations" in parsed
 
 
@@ -70,6 +71,7 @@ async def test_export_csv_header_fields(client: AsyncClient, seed_trials: list[T
     assert "phase" in header
     assert "interventions" in header
     assert "secondary_outcomes" in header
+    assert "conditions" in header
     assert "locations" in header
 
 
