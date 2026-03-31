@@ -12,29 +12,30 @@ REST API that ingests clinical trial data from [ClinicalTrials.gov](https://clin
 # Health check
 curl https://clinical-trials-etl-api-qx33.onrender.com/health
 
-# Search trials (paginated)
+# Search trials (paginated, 578K+ trials)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?limit=5"
 
-# Single trial by NCT ID
+# Single trial by NCT ID (includes conditions, MeSH terms, references, investigators)
 curl https://clinical-trials-etl-api-qx33.onrender.com/trials/NCT00597909
 
-# Filter by sponsor
-curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sponsor=pfizer&limit=5"
+# Filter by sponsor, status, phase, study type
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sponsor=pfizer&status=RECRUITING&phase=PHASE3&limit=5"
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?study_type=INTERVENTIONAL&limit=5"
 
-# Filter by status
-curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?status=recruiting&limit=5"
-
-# Filter by phase
-curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?phase=PHASE3&limit=5"
+# Sort results (by start_date, updated_at, enrollment_number, etc.)
+curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?sort_by=updated_at&order=desc&limit=5"
 
 # Poll for recently updated trials (OpenAlex daily sync)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/search?updated_since=2026-03-30&limit=50"
 
-# Bulk export (gzip-compressed NDJSON)
+# Bulk export (gzip-compressed NDJSON — keyset pagination, streams all 578K)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=ndjson" --compressed > trials.ndjson
 
 # Bulk export (gzip-compressed CSV)
 curl "https://clinical-trials-etl-api-qx33.onrender.com/trials/export?format=csv" --compressed > trials.csv
+
+# Ingestion status (DB total + background job progress)
+curl https://clinical-trials-etl-api-qx33.onrender.com/ingest/status
 ```
 
 ## Demo Video
