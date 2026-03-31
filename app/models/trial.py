@@ -19,6 +19,7 @@ class Trial(Base):
     phase: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(100), nullable=False)
     sponsor_name: Mapped[str] = mapped_column(Text, nullable=False)
+    study_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     interventions: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
@@ -28,15 +29,28 @@ class Trial(Base):
     secondary_outcomes: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
-    start_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
-    completion_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     conditions: Mapped[list[str] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
+    eligibility_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mesh_terms: Mapped[list[str] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    references: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    investigators: Mapped[list[dict[str, object]] | None] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"), nullable=True
+    )
+    start_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    completion_date: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
     locations: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=True
     )
     enrollment_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(
+        String(100), nullable=False, server_default="clinicaltrials.gov"
+    )
     raw_data: Mapped[dict[str, object]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"), nullable=False
     )

@@ -22,14 +22,20 @@ EXPORT_FIELDS = [
     "phase",
     "status",
     "sponsor_name",
+    "study_type",
     "interventions",
     "primary_outcomes",
     "secondary_outcomes",
     "conditions",
+    "eligibility_criteria",
+    "mesh_terms",
+    "references",
+    "investigators",
     "start_date",
     "completion_date",
     "locations",
     "enrollment_number",
+    "source",
 ]
 
 BATCH_SIZE = 1000

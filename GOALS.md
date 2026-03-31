@@ -134,6 +134,27 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 
 ---
 
+## Session 6 — Schema Enrichment & Remaining Gaps (Mar 31, 2026)
+> Goal: Address every remaining concern from the evaluation — leave no stone unturned.
+
+- [x] Extracted `study_type` from CT.gov `designModule.studyType` (e.g., INTERVENTIONAL, OBSERVATIONAL)
+- [x] Extracted `eligibility_criteria` from CT.gov `eligibilityModule.eligibilityCriteria` (free text)
+- [x] Extracted `mesh_terms` from CT.gov `derivedSection.conditionBrowseModule.meshes` (list of MeSH term strings)
+- [x] Extracted `references` (DOIs/PMIDs/citations) from CT.gov `referencesModule.references` (JSONB array)
+- [x] Extracted `investigators` from CT.gov `contactsLocationsModule.overallOfficials` (JSONB array)
+- [x] Added `source` field (TEXT, default "clinicaltrials.gov") for multi-registry readiness
+- [x] Added `sort_by` + `order` (asc/desc) query parameters to `/trials/search`
+- [x] Added `study_type` filter to `/trials/search` (exact match)
+- [x] Added bounded retry logic to batch loader (3 attempts, exponential backoff: 1s, 2s, 4s)
+- [x] Fixed `render.yaml` cron BATCH_SIZE from 50 → 500 (internal connection, not subject to external timeouts)
+- [x] Migration 004: `study_type`, `eligibility_criteria`, `mesh_terms`, `references`, `investigators`, `source`
+- [x] 20 new tests (95 total): parser extraction for all new fields, API enrichment response, study_type filter, sorting asc/desc/invalid, null fields
+- [x] Updated all documentation (README, CLAUDE.md, GOALS.md, LEARNING.md) with new schema, test counts, and features
+
+**Done when**: All evaluation concerns addressed, 95 tests pass, docs consistent.
+
+---
+
 ## Pre-Session Checklist (do before starting each timer)
 - [x] Dependencies installed (`pip install -r requirements.txt`)
 - [x] `.env` configured with DB credentials

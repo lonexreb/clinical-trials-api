@@ -13,14 +13,20 @@ class ParsedTrial(TypedDict):
     phase: str | None
     status: str
     sponsor_name: str
+    study_type: str | None
     interventions: list[dict[str, object]] | None
     primary_outcomes: list[dict[str, object]] | None
     secondary_outcomes: list[dict[str, object]] | None
     conditions: list[str] | None
+    eligibility_criteria: str | None
+    mesh_terms: list[str] | None
+    references: list[dict[str, object]] | None
+    investigators: list[dict[str, object]] | None
     start_date: datetime.date | None
     completion_date: datetime.date | None
     locations: list[dict[str, object]] | None
     enrollment_number: int | None
+    source: str
     raw_data: dict[str, object]
 
 
@@ -101,6 +107,7 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
     with various modules. Each module may be absent or None.
     """
     protocol = _ensure_dict(study.get("protocolSection", {}))
+    derived = _ensure_dict(study.get("derivedSection", {}))
 
     id_mod = _ensure_dict(protocol.get("identificationModule", {}))
     status_mod = _ensure_dict(protocol.get("statusModule", {}))
@@ -110,6 +117,8 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
     outcomes_mod = _ensure_dict(protocol.get("outcomesModule", {}))
     contacts_mod = _ensure_dict(protocol.get("contactsLocationsModule", {}))
     conditions_mod = _ensure_dict(protocol.get("conditionsModule", {}))
+    eligibility_mod = _ensure_dict(protocol.get("eligibilityModule", {}))
+    references_mod = _ensure_dict(protocol.get("referencesModule", {}))
 
     # trial_id and title (required)
     trial_id = str(id_mod.get("nctId", "UNKNOWN"))
@@ -128,6 +137,10 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
     lead_sponsor = _ensure_dict(sponsor_mod.get("leadSponsor", {}))
     sponsor_name = str(lead_sponsor.get("name", "Unknown"))
 
+    # study type: e.g. "INTERVENTIONAL", "OBSERVATIONAL"
+    raw_study_type = design_mod.get("studyType")
+    study_type = str(raw_study_type) if raw_study_type else None
+
     # interventions: store full array of dicts
     interventions = _parse_list_of_dicts(arms_mod.get("interventions"))
 
@@ -144,6 +157,27 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
         conditions = [str(c) for c in raw_conditions if c]
         if not conditions:
             conditions = None
+
+    # eligibility criteria: free text from eligibilityModule
+    raw_eligibility = eligibility_mod.get("eligibilityCriteria")
+    eligibility_criteria = str(raw_eligibility).strip() if raw_eligibility else None
+    if eligibility_criteria == "":
+        eligibility_criteria = None
+
+    # MeSH terms: from derivedSection.conditionBrowseModule.meshes
+    condition_browse = _ensure_dict(derived.get("conditionBrowseModule", {}))
+    raw_meshes = condition_browse.get("meshes")
+    mesh_terms: list[str] | None = None
+    if isinstance(raw_meshes, list) and len(raw_meshes) > 0:
+        mesh_terms = [str(m.get("term", "")) for m in raw_meshes if isinstance(m, dict) and m.get("term")]
+        if not mesh_terms:
+            mesh_terms = None
+
+    # references/DOIs: from referencesModule.references
+    references = _parse_list_of_dicts(references_mod.get("references"))
+
+    # investigators: from contactsLocationsModule.overallOfficials
+    investigators = _parse_list_of_dicts(contacts_mod.get("overallOfficials"))
 
     # dates
     start_date_struct = _ensure_dict(status_mod.get("startDateStruct", {}))
@@ -173,13 +207,19 @@ def parse_study(study: dict[str, object]) -> ParsedTrial:
         phase=phase,
         status=status,
         sponsor_name=sponsor_name,
+        study_type=study_type,
         interventions=interventions,
         primary_outcomes=primary_outcomes,
         secondary_outcomes=secondary_outcomes,
         conditions=conditions,
+        eligibility_criteria=eligibility_criteria,
+        mesh_terms=mesh_terms,
+        references=references,
+        investigators=investigators,
         start_date=start_date,
         completion_date=completion_date,
         locations=locations,
         enrollment_number=enrollment_number,
+        source="clinicaltrials.gov",
         raw_data=study,  # type: ignore[typeddict-item]
     )

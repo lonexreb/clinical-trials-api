@@ -9,14 +9,20 @@ class TrialBase(BaseModel):
     phase: str | None = None
     status: str
     sponsor_name: str
+    study_type: str | None = None
     interventions: list[dict[str, object]] | None = None
     primary_outcomes: list[dict[str, object]] | None = None
     secondary_outcomes: list[dict[str, object]] | None = None
     conditions: list[str] | None = None
+    eligibility_criteria: str | None = None
+    mesh_terms: list[str] | None = None
+    references: list[dict[str, object]] | None = None
+    investigators: list[dict[str, object]] | None = None
     start_date: datetime.date | None = None
     completion_date: datetime.date | None = None
     locations: list[dict[str, object]] | None = None
     enrollment_number: int | None = None
+    source: str = "clinicaltrials.gov"
 
 
 class TrialCreate(TrialBase):

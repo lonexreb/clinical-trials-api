@@ -55,6 +55,7 @@ COMPLETE_STUDY: dict[str, object] = {
         },
         "designModule": {
             "phases": ["PHASE3"],
+            "studyType": "INTERVENTIONAL",
             "enrollmentInfo": {"count": 500, "type": "ESTIMATED"},
         },
         "sponsorCollaboratorsModule": {
@@ -90,10 +91,30 @@ COMPLETE_STUDY: dict[str, object] = {
         "conditionsModule": {
             "conditions": ["Lung Cancer", "Non-Small Cell Lung Cancer"],
         },
+        "eligibilityModule": {
+            "eligibilityCriteria": "Inclusion Criteria:\n- Age >= 18\n- Confirmed NSCLC\n\nExclusion Criteria:\n- Prior chemotherapy",
+        },
+        "referencesModule": {
+            "references": [
+                {"pmid": "12345678", "type": "RESULT", "citation": "Smith et al. J Oncol. 2023"},
+                {"pmid": "23456789", "type": "BACKGROUND", "citation": "Jones et al. Lancet. 2022"},
+            ],
+        },
         "contactsLocationsModule": {
             "locations": [
                 {"facility": "Hospital A", "city": "New York", "country": "United States"},
                 {"facility": "Hospital B", "city": "London", "country": "United Kingdom"},
+            ],
+            "overallOfficials": [
+                {"name": "Dr. Jane Smith", "role": "PRINCIPAL_INVESTIGATOR", "affiliation": "Hospital A"},
+            ],
+        },
+    },
+    "derivedSection": {
+        "conditionBrowseModule": {
+            "meshes": [
+                {"id": "D008175", "term": "Lung Neoplasms"},
+                {"id": "D002289", "term": "Carcinoma, Non-Small-Cell Lung"},
             ],
         },
     },
@@ -348,3 +369,129 @@ class TestParseStudy:
         result = parse_study(study)
         assert result["start_date"] == datetime.date(2015, 10, 1)
         assert result["completion_date"] == datetime.date(2024, 1, 1)
+
+    def test_study_type_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["study_type"] == "INTERVENTIONAL"
+
+    def test_study_type_missing(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["study_type"] is None
+
+    def test_eligibility_criteria_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["eligibility_criteria"] is not None
+        assert "Age >= 18" in result["eligibility_criteria"]
+        assert "Prior chemotherapy" in result["eligibility_criteria"]
+
+    def test_eligibility_criteria_missing(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["eligibility_criteria"] is None
+
+    def test_eligibility_criteria_empty(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+                "eligibilityModule": {"eligibilityCriteria": ""},
+            },
+        }
+        result = parse_study(study)
+        assert result["eligibility_criteria"] is None
+
+    def test_mesh_terms_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["mesh_terms"] is not None
+        assert len(result["mesh_terms"]) == 2
+        assert "Lung Neoplasms" in result["mesh_terms"]
+        assert "Carcinoma, Non-Small-Cell Lung" in result["mesh_terms"]
+
+    def test_mesh_terms_missing_derived_section(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["mesh_terms"] is None
+
+    def test_mesh_terms_empty_meshes(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+            "derivedSection": {
+                "conditionBrowseModule": {"meshes": []},
+            },
+        }
+        result = parse_study(study)
+        assert result["mesh_terms"] is None
+
+    def test_references_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["references"] is not None
+        assert len(result["references"]) == 2
+        assert result["references"][0]["pmid"] == "12345678"
+
+    def test_references_missing(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["references"] is None
+
+    def test_investigators_extracted(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["investigators"] is not None
+        assert len(result["investigators"]) == 1
+        assert result["investigators"][0]["name"] == "Dr. Jane Smith"
+        assert result["investigators"][0]["role"] == "PRINCIPAL_INVESTIGATOR"
+
+    def test_investigators_missing(self) -> None:
+        study: dict[str, object] = {
+            "protocolSection": {
+                "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Test"},
+                "statusModule": {"overallStatus": "COMPLETED"},
+                "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Sponsor"}},
+                "designModule": {},
+            },
+        }
+        result = parse_study(study)
+        assert result["investigators"] is None
+
+    def test_source_always_set(self) -> None:
+        result = parse_study(COMPLETE_STUDY)
+        assert result["source"] == "clinicaltrials.gov"
+
+    def test_source_set_for_empty_study(self) -> None:
+        result = parse_study({})
+        assert result["source"] == "clinicaltrials.gov"
