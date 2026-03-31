@@ -158,7 +158,7 @@ Migrations:
 - NEVER modify applied migration files
 - NEVER hardcode credentials — env vars via `app/core/config.py`
 - Date parsing MUST handle multiple CT.gov formats
-- Batch inserts: max 500 per batch (use 50 for external remote Postgres), with bounded retry (3 attempts, exponential backoff)
+- Batch inserts: default 100 per batch (tuned for Render Postgres), with bounded retry (3 attempts, exponential backoff)
 - `/health` must not touch the database
 - Update CLAUDE.md, README.md, and LEARNING.md with each commit
 

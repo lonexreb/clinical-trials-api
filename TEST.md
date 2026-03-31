@@ -146,7 +146,7 @@ Run these after `docker-compose up` or against deployed URL:
 - [x] `python -m scripts.run_ingestion --max-pages 1` ingests real data
 - [x] `python -m scripts.run_ingestion --since yesterday` incremental update works
 - [x] Ingested records appear in API response
-- [x] 578,109 unique trials verified (0 duplicates)
+- [x] 578,361 unique trials verified (0 duplicates)
 
 ---
 

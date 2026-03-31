@@ -96,7 +96,7 @@ docker-compose up
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://postgres:postgres@localhost:5432/clinical_trials` | PostgreSQL connection string |
 | `CT_GOV_BASE_URL` | `https://clinicaltrials.gov/api/v2/studies` | ClinicalTrials.gov API base URL |
-| `BATCH_SIZE` | `100` | Max records per batch insert (100 for Render, 500 for local) |
+| `BATCH_SIZE` | `100` | Max records per batch insert (100 default; 500 acceptable for local Postgres) |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## API Reference
@@ -288,7 +288,7 @@ Screenshots from a production ingestion run using `POST /ingest/all` with the TU
 On Render, ingestion runs as a **cron job** (not via HTTP endpoints) with direct internal DB access:
 - **Daily cron**: runs at 2 AM UTC via `render.yaml`, fetches only new/updated records
 - **Initial load**: trigger the cron job manually from the Render dashboard, use `POST /ingest/all` to queue all shards, or run `scripts/initial_load.sh` as a one-off job
-- **Batch size**: 100 (tuned for reliable writes under sustained load on Render Postgres)
+- **Batch size**: 100 (tuned for reliable writes under sustained load; both web and cron use 100)
 - **Monitor progress**: `python -m scripts.monitor_ingestion --url https://clinical-trials-etl-api-qx33.onrender.com` — live TUI dashboard for background ingestion jobs
 
 ## Schema

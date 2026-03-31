@@ -49,7 +49,7 @@ This iterative approach meant the project was always in a working state — each
 - `JSON().with_variant(JSONB, "postgresql")` lets the model use JSONB on Postgres and JSON on SQLite (for tests). No conditional code needed.
 
 ### SQLite In-Memory Tests
-- Using `sqlite+aiosqlite:///` for tests is fast (68 tests in 0.24s) and requires no external services.
+- Using `sqlite+aiosqlite:///` for tests is fast (95 tests in <1s) and requires no external services.
 - Tests override the `get_db` dependency to inject the test session — clean pattern.
 
 ### Upsert with `ON CONFLICT DO UPDATE`
@@ -62,7 +62,7 @@ This iterative approach meant the project was always in a working state — each
 ### Render Deployment with `render.yaml`
 - Blueprint-based deployment (render.yaml) auto-provisions the database and wires `DATABASE_URL` as a secret. One-click setup.
 - Supports three service types in one file: web (API), cron (daily ingestion), and database.
-- Cron job runs `--since yesterday` daily at 2 AM UTC with internal DB connection (batch size 500, no external timeout issues).
+- Cron job runs `--since yesterday` daily at 2 AM UTC with internal DB connection (batch size 100).
 
 ### Production `/ingest` Endpoint + Background Job System
 - Added `POST /ingest` to trigger ingestion from the deployed service without SSH access.
@@ -211,7 +211,7 @@ The path from working locally to a production API with 578K trials was the most 
 ### Deployment
 - **Live URL**: `https://clinical-trials-etl-api-qx33.onrender.com`
 - **Demo video**: [2-minute walkthrough on Loom](https://www.loom.com/share/ab906165ff08458a8dd7a31e7ebb2012)
-- **578,109 trials** in production PostgreSQL (basic-1gb, 10GB disk) — full dataset, zero errors
+- **578,361 trials** in production PostgreSQL (basic-1gb, 10GB disk) — full dataset with enrichment fields, zero errors
 - Three services defined in single `render.yaml`: web (API), cron (daily ingestion), database
 - Blueprint deploy auto-provisions database and wires `DATABASE_URL` as a secret
 
@@ -259,7 +259,7 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 ### What Could Be Improved
 - **Initial over-engineering**: Early iterations had manual gzip in export generators and `stream_scalars()` for streaming — both were replaced with simpler solutions (GZipMiddleware, batched reads). Claude Code could have started simpler.
 - **`/ingest` vs CLI gap**: The `/ingest` endpoint doesn't support `--since` (only `year_start`/`year_end`). The daily cron uses the CLI. This asymmetry was caught late during code review — should have been designed upfront.
-- **Full dataset loaded**: After upgrading to basic-1gb plan, all 578,109 trials were ingested via `POST /ingest/all` — 12 shards, zero errors.
+- **Full dataset loaded**: After upgrading to basic-1gb plan, all 578,361 trials were ingested and re-ingested with enriched parser via `POST /ingest/all` — 12 shards, zero errors. Enrichment fields (conditions, mesh_terms, references, investigators, study_type, eligibility_criteria) populated on all records.
 
 ---
 
@@ -330,7 +330,7 @@ After fixing the critical evaluation gaps, went back through the full evaluation
 | `skip/limit` pagination (our API) vs cursor | Simpler for consumers, acceptable at MVP scale |
 | ILIKE for sponsor/phase, exact match for status | Substring matching for free-text fields, exact match for enumerated values |
 | Render over Fly.io | Standard Postgres URLs, simpler deployment, no SSL workarounds |
-| Batch size 500 for internal ingestion | Internal Render connection avoids the timeout issues of external connections |
+| Batch size 100 for production ingestion | Reliable under sustained load on Render Postgres; 500 caused connection drops |
 | JSONB arrays over flat columns | Preserves all interventions/outcomes/locations instead of just first |
 | GZipMiddleware over manual gzip | Automatic compression, keeps export code simple |
 | Keyset pagination for export | Consistent O(1) performance per batch regardless of depth, replaces OFFSET |
