@@ -422,35 +422,35 @@ The system supports fully automated, idempotent daily updates:
 
 ## Development Timeline
 
-The brief suggested focused three-hour sessions. Each session below stayed within that window — the git timestamps confirm it.
+The brief targets ~3 hours. I went beyond that — and I want to be upfront about where the time went.
 
-### Pre-Evaluation — 4 sessions, Mar 26-28
+The core application (schema, parser, API, tests, Docker) was built in one ~3-hour session. That's the part the brief scopes. What took the project past 3 hours was a deliberate choice: I didn't stop at "works locally." I deployed to production, loaded the full 578K dataset, fought through real infrastructure failures, and documented every one. That's time I chose to spend because shipping a live URL with real data felt more honest than a localhost demo.
+
+### Pre-Evaluation — Git log (Mar 26-28)
 
 | Session | Git timestamps | Duration | What shipped |
 |---|---|---|---|
-| **1. Build** | Mar 26, 18:33 | ~3 hours | Full working prototype: FastAPI, schema, CT.gov parser, batch loader, search + export endpoints, Docker, tests |
-| **2. Deploy** | Mar 27, 20:42-20:53 | 11 min | Fly.io hit asyncpg SSL wall. Diagnosed it, switched to Render. Done. |
-| **3. Ship** | Mar 28, 00:22-02:43 | 2h 21m | Schema evolution to JSONB arrays, `/ingest` endpoint, year-range sharding, daily cron, 578K trials loaded |
-| **4. Harden** | Mar 28, 05:07-07:02 | 1h 55m | Background ingestion, TUI monitor, connection pool fix, Render service recreation |
+| **Build** | Mar 26, 18:33 | ~3h | Working prototype: FastAPI, schema, CT.gov parser, batch loader, search + export, Docker, tests |
+| **Deploy** | Mar 27, 20:42-20:53 | 11 min | Fly.io failed (asyncpg SSL). Diagnosed, switched to Render |
+| **Ship** | Mar 28, 00:22-02:43 | 2h 21m | Schema evolution to JSONB arrays, `/ingest` endpoint, parallel sharding, daily cron, 578K trials loaded |
+| **Harden** | Mar 28, 05:07-07:02 | 1h 55m | Background ingestion, TUI monitor, connection pool fix, service recreation |
 
-No session exceeded 3 hours. The gap between sessions 3 and 4 was a Render starter-plan storage lockout at 325K trials — couldn't write to the DB for 12 hours, so I came back when it unlocked.
+Between sessions 3 and 4: Render starter-plan DB hit its storage limit at 325K trials — 12-hour lockout before it unlocked.
 
-**Delivered**: 578K trials in production, 68 tests, daily cron, full API. Every operational issue documented in [LEARNING.md](LEARNING.md).
+**Delivered**: 578K trials live in production, 68 tests, automated daily cron. Nine operational issues hit, nine resolved, all documented in [LEARNING.md](LEARNING.md).
 
-### Post-Evaluation — 1 session, Mar 31
+### Post-Evaluation — Git log (Mar 31)
 
-Received detailed evaluation with specific gaps identified. One session to address all of them:
+Received detailed evaluation with specific gaps identified. Addressed every one:
 
 | Git timestamps | What shipped |
 |---|---|
-| 03:21-05:43 UTC | PR #1: `updated_since` polling, keyset pagination, exact status match, conditions extraction, `updated_at` index, 7 new tests |
+| 03:21-05:43 UTC | PR #1: `updated_since` polling, keyset pagination, exact status match, conditions extraction, 7 new tests |
 | 06:16-07:13 UTC | PR #2: study_type, eligibility_criteria, mesh_terms, references/DOIs, investigators, source, sorting, bounded retry, 20 new tests |
 
-Under 4 hours total. Both PRs reviewed by CodeRabbit, Codex, and Bugbot — feedback addressed before merge. Re-ingested 578,361 trials with enriched parser, verified every field on the live API. 95 tests, all passing.
+Both PRs reviewed by CodeRabbit, Codex, and Bugbot — feedback addressed before merge. Re-ingested 578,361 trials with enriched parser, verified every field on the live API. 95 tests, all passing.
 
 See [LEARNING.md](LEARNING.md) for the full narrative and architectural decisions.
-
-See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
 ## Live API Verification
 
