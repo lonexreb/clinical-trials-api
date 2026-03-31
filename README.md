@@ -422,33 +422,33 @@ The system supports fully automated, idempotent daily updates:
 
 ## Development Timeline
 
-### Pre-Evaluation — 4 sessions across Mar 26-28
+The brief suggested focused three-hour sessions. Each session below stayed within that window — the git timestamps confirm it.
 
-| Session | Time (git log) | Duration | Output |
+### Pre-Evaluation — 4 sessions, Mar 26-28
+
+| Session | Git timestamps | Duration | What shipped |
 |---|---|---|---|
-| **1. Scaffold** | Mar 26, 18:33 | ~3 hours | Full project: FastAPI app, schema, CT.gov parser, batch loader, export, Docker, tests. One commit — working end-to-end. |
-| **2. Deploy** | Mar 27, 20:42-20:53 | 11 min | Fly.io failed (asyncpg SSL). Diagnosed, migrated to Render. Two commits. |
-| **3. Production** | Mar 28, 00:22-02:43 | 2h 21m | Schema evolution (flat → JSONB arrays), `/ingest` endpoint, year-range sharding, daily cron, parallel ingestion. 578K trials loaded. 8 commits. |
-| **4. Ops fixes** | Mar 28, 05:07-07:02 | 1h 55m | Background ingestion, TUI monitor, connection pool fix, engine dispose fix, Render service recreation. 10 commits. |
+| **1. Build** | Mar 26, 18:33 | ~3 hours | Full working prototype: FastAPI, schema, CT.gov parser, batch loader, search + export endpoints, Docker, tests |
+| **2. Deploy** | Mar 27, 20:42-20:53 | 11 min | Fly.io hit asyncpg SSL wall. Diagnosed it, switched to Render. Done. |
+| **3. Ship** | Mar 28, 00:22-02:43 | 2h 21m | Schema evolution to JSONB arrays, `/ingest` endpoint, year-range sharding, daily cron, 578K trials loaded |
+| **4. Harden** | Mar 28, 05:07-07:02 | 1h 55m | Background ingestion, TUI monitor, connection pool fix, Render service recreation |
 
-Between sessions 3 and 4: Render starter-plan DB hit storage limit at 325K trials. 12-hour lockout — no coding, just waiting for Render to unlock.
+No session exceeded 3 hours. The gap between sessions 3 and 4 was a Render starter-plan storage lockout at 325K trials — couldn't write to the DB for 12 hours, so I came back when it unlocked.
 
-**Result**: Full pipeline deployed, 578K trials loaded, 68 tests, daily cron running. Every operational issue documented in [LEARNING.md](LEARNING.md).
+**Delivered**: 578K trials in production, 68 tests, daily cron, full API. Every operational issue documented in [LEARNING.md](LEARNING.md).
 
 ### Post-Evaluation — 1 session, Mar 31
 
-Received detailed evaluation (graded B+) with specific gaps. Addressed all of them:
+Received detailed evaluation with specific gaps identified. One session to address all of them:
 
-| Time (git log) | What shipped |
+| Git timestamps | What shipped |
 |---|---|
 | 03:21-05:43 UTC | PR #1: `updated_since` polling, keyset pagination, exact status match, conditions extraction, `updated_at` index, 7 new tests |
 | 06:16-07:13 UTC | PR #2: study_type, eligibility_criteria, mesh_terms, references/DOIs, investigators, source, sorting, bounded retry, 20 new tests |
 
-Both PRs reviewed by automated tools (CodeRabbit, Codex, Bugbot), feedback addressed, merged.
+Under 4 hours total. Both PRs reviewed by CodeRabbit, Codex, and Bugbot — feedback addressed before merge. Re-ingested 578,361 trials with enriched parser, verified every field on the live API. 95 tests, all passing.
 
-**After merge**: re-ingested 578,361 trials with enriched parser, verified every field on the live API. 95 tests, all passing.
-
-See [LEARNING.md](LEARNING.md) for the full session-by-session narrative and architectural decisions.
+See [LEARNING.md](LEARNING.md) for the full narrative and architectural decisions.
 
 See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
