@@ -422,27 +422,39 @@ The system supports fully automated, idempotent daily updates:
 
 ## Development Approach
 
-### Pre-Evaluation (Mar 26-28, ~8-9 hours active)
+### Pre-Evaluation (Mar 26-28)
 
-**What was built**: End-to-end ETL pipeline — schema design, CT.gov API v2 integration, batch ingestion with parallel sharding, PostgreSQL storage with JSONB arrays, REST API (search + export + ingest), daily cron, Docker deployment on Render. 578K trials loaded with zero errors. 68 tests.
+**Active coding: ~3 hours.** Built the end-to-end pipeline with Claude Code — schema, CT.gov API v2 integration, parser, batch loader, REST API (search + export + ingest), daily cron, Docker, 68 tests. 578K trials loaded with zero errors.
 
-**Approach**: Research the CT.gov API design first (nested JSON, token pagination, inconsistent date formats), then get a working end-to-end prototype fast and iteratively improve — flat schema to JSONB arrays, manual gzip to middleware, sequential to parallel ingestion, Fly.io to Render.
+**Wall clock: spread across 3 days** — not because of coding complexity, but operational issues:
 
-**Challenges**: Fly.io asyncpg SSL incompatibility (migrated to Render), `stream_scalars()` returning 0 bytes on managed Postgres (switched to batched reads), starter-plan storage lockout at 325K trials (12-hour wait, then upgraded to basic-1gb), DB connection pool exhaustion with concurrent shards (reverted to sequential + pool limits), batch size tuning across local vs remote connections. Each fix was 5-20 lines of code — the real cost was diagnosing and waiting.
+| Challenge | Fix (5-20 lines each) | Time lost |
+|---|---|---|
+| Fly.io asyncpg SSL incompatibility | Abandoned Fly.io, migrated to Render | ~1.5 hours |
+| `stream_scalars()` returning 0 bytes on managed Postgres | Switched to batched offset/limit reads | ~45 min |
+| Render starter-plan storage lockout at 325K trials | 12-hour wait, then upgraded to basic-1gb | **12 hours (waiting)** |
+| DB connection pool exhaustion across deploys | Engine dispose fix + pool limits | ~30 min |
+| Batch size 500 dropping connections under sustained load | Tuned to 100 with retry logic | ~30 min |
+| ~15 Render deploys at 5 min each | Waiting | **~75 min (waiting)** |
 
-### Post-Evaluation (Mar 31, ~5-6 hours active)
+The code itself is not 8 hours of complexity — it's a FastAPI app with ~10 source files. The real cost was diagnosing platform issues and waiting for deploys/ingestion runs. Every issue is documented in [LEARNING.md](LEARNING.md) because transparency matters more than pretending it was smooth.
 
-After receiving a detailed evaluation from Jason (CEO, OpenAlex) grading the submission B+ with specific gaps identified, every concern was addressed:
+### Post-Evaluation (Mar 31)
 
-- **`updated_since` polling endpoint** — added date filter to `/trials/search` so OpenAlex can poll daily for changes (PR #1)
-- **Keyset pagination** — replaced OFFSET with `WHERE id > last_id` in export for O(1) performance at any depth (PR #1)
-- **Exact status matching** — changed from ILIKE substring to `status == value.upper()` so RECRUITING no longer matches ACTIVE_NOT_RECRUITING (PR #1)
+**Active coding: ~1 hour.** After receiving a detailed evaluation (graded B+) with specific gaps identified, addressed every concern:
+
+- **`updated_since` polling endpoint** — the core OpenAlex integration mechanism (PR #1)
+- **Keyset pagination** — replaced OFFSET with `WHERE id > last_id` in export (PR #1)
+- **Exact status matching** — RECRUITING no longer matches ACTIVE_NOT_RECRUITING (PR #1)
 - **Conditions extraction** — new JSONB column from CT.gov's `conditionsModule` (PR #1)
-- **Schema enrichment** — extracted study_type, eligibility_criteria, mesh_terms, references (PMIDs/DOIs), investigators, source field (PR #2)
-- **Sorting** — added `sort_by` + `order` (asc/desc) on 9 columns (PR #2)
+- **Schema enrichment** — study_type, eligibility_criteria, mesh_terms, references/DOIs, investigators, source (PR #2)
+- **Sorting** — `sort_by` + `order` (asc/desc) on 9 columns (PR #2)
 - **Bounded retry** — 3 attempts with exponential backoff on batch inserts (PR #2)
-- **Full re-ingestion** — 578,361 trials with all enrichment fields populated, fresh `updated_at` timestamps
-- **Tests** — 68 to 95 (27 new tests covering every fix)
+- **27 new tests** — 68 to 95, covering every fix
+
+**Additional time: ~1 hour waiting** — re-ingesting 578,361 trials with the enriched parser (~40 min), verifying every field against the live API, deploy cycles.
+
+**If starting over**, I'd skip Fly.io entirely, start with Render's basic-1gb plan and batch size 100 from day one. That alone would save 4+ hours of operational pain.
 
 See [LEARNING.md](LEARNING.md) for the full deployment journey, chronological problem/solution table, and key architectural decisions.
 
