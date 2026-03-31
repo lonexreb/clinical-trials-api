@@ -75,6 +75,7 @@ async def test_export_csv_header_fields(client: AsyncClient, seed_trials: list[T
     assert "status" in header
     assert "sponsor_name" in header
     assert "phase" in header
+    assert "study_type" in header
     assert "interventions" in header
     assert "secondary_outcomes" in header
     assert "conditions" in header

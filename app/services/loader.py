@@ -100,6 +100,9 @@ async def load_trials(
                 succeeded = True
                 break
             except Exception:
+                # Roll back the failed transaction so the session is reusable
+                if session_factory is None:
+                    await session.rollback()
                 backoff = RETRY_BACKOFF_SECONDS[min(attempt, len(RETRY_BACKOFF_SECONDS) - 1)]
                 if attempt < MAX_RETRIES - 1:
                     logger.warning(
