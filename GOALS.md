@@ -3,7 +3,7 @@
 > **Purpose**: Track progress across sessions. Update `[ ]` → `[x]` as work completes.
 > Referenced from CLAUDE.md via `@GOALS.md`.
 >
-> **Timeline**: ~8–9 hours active coding over 4 days. Initial development took ~2h50m across 3 sessions; a fourth session (~5–6 hours on Mar 31, 2026) addressed detailed evaluation feedback from OpenAlex's CEO. Most elapsed time beyond coding was waiting on deploys, ingestion runs, and infrastructure.
+> **Timeline**: ~8–9 hours active coding over 4 days across 6 sessions. Initial development took ~2h50m across 4 sessions (Sessions 1–4); Session 5 (~5–6 hours on Mar 31, 2026) addressed detailed evaluation feedback from OpenAlex's CEO; Session 6 addressed all remaining schema and API gaps. Most elapsed time beyond coding was waiting on deploys, ingestion runs, and infrastructure.
 
 ## Success Definition
 A working end-to-end system that ingests real trial records from ClinicalTrials.gov, stores them in a clean extensible PostgreSQL database, and serves them to OpenAlex via a public API. Focus is a functional MVP — precision can be improved later.
