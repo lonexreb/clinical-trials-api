@@ -31,8 +31,8 @@ async def search_trials(
         query = query.where(Trial.sponsor_name.ilike(f"%{sponsor}%"))
         count_query = count_query.where(Trial.sponsor_name.ilike(f"%{sponsor}%"))
     if status:
-        query = query.where(func.upper(Trial.status) == status.upper())
-        count_query = count_query.where(func.upper(Trial.status) == status.upper())
+        query = query.where(Trial.status == status.upper())
+        count_query = count_query.where(Trial.status == status.upper())
     if phase:
         query = query.where(Trial.phase.ilike(f"%{phase}%"))
         count_query = count_query.where(Trial.phase.ilike(f"%{phase}%"))

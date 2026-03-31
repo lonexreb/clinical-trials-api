@@ -1,4 +1,4 @@
-"""Add conditions JSONB column for storing trial condition/disease data.
+"""Add conditions JSONB column and updated_at index.
 
 Revision ID: 003
 Revises: 002
@@ -20,7 +20,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     op.add_column("trials", sa.Column("conditions", postgresql.JSONB(astext_type=sa.Text()), nullable=True))
+    op.create_index("ix_trials_updated_at", "trials", ["updated_at"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_trials_updated_at", table_name="trials")
     op.drop_column("trials", "conditions")

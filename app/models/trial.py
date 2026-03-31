@@ -55,6 +55,7 @@ class Trial(Base):
         Index("ix_trials_sponsor_name", "sponsor_name"),
         Index("ix_trials_status", "status"),
         Index("ix_trials_phase", "phase"),
+        Index("ix_trials_updated_at", "updated_at"),
     )
 
     def __repr__(self) -> str:

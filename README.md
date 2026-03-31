@@ -388,7 +388,7 @@ Independent verification against the production API (`https://clinical-trials-et
 
 All schema fields confirmed present in responses: `trial_id`, `title`, `phase`, `status`, `sponsor_name`, `interventions` (JSONB array), `primary_outcomes` (JSONB array), `secondary_outcomes` (JSONB array), `start_date`, `completion_date`, `locations` (JSONB array), `enrollment_number`, `created_at`, `updated_at`.
 
-> **Note**: The status filter uses ILIKE substring matching, so `status=RECRUITING` also matches `ACTIVE_NOT_RECRUITING`. This is the documented behavior (case-insensitive partial matching) — a reasonable design choice for an MVP.
+> **Note**: The status filter uses exact matching (case-insensitive), so `status=RECRUITING` matches only trials with status `RECRUITING`, not `ACTIVE_NOT_RECRUITING`. Sponsor and phase filters use ILIKE substring matching for flexible free-text search.
 
 **Bottom line: all API claims check out. The live production API is fully functional with 578,109 trials.**
 
