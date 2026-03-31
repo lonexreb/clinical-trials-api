@@ -186,3 +186,71 @@ async def test_response_null_jsonb_fields(client: AsyncClient, seed_trials: list
     assert data["secondary_outcomes"] is None
     assert data["conditions"] is None
     assert data["locations"] is None
+    assert data["study_type"] is None
+    assert data["eligibility_criteria"] is None
+    assert data["mesh_terms"] is None
+    assert data["references"] is None
+    assert data["investigators"] is None
+
+
+@pytest.mark.asyncio
+async def test_response_includes_new_enrichment_fields(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Verify new schema enrichment fields appear in API response."""
+    response = await client.get("/trials/NCT00000001")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["study_type"] == "INTERVENTIONAL"
+    assert "Age >= 18" in data["eligibility_criteria"]
+    assert data["mesh_terms"] == ["Lung Neoplasms", "Carcinoma, Non-Small-Cell Lung"]
+    assert data["references"][0]["pmid"] == "12345678"
+    assert data["investigators"][0]["name"] == "Dr. Smith"
+    assert data["source"] == "clinicaltrials.gov"
+
+
+@pytest.mark.asyncio
+async def test_filter_by_study_type(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Filter by study_type uses exact match."""
+    response = await client.get("/trials/search?study_type=OBSERVATIONAL")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 1
+    assert data["data"][0]["study_type"] == "OBSERVATIONAL"
+
+
+@pytest.mark.asyncio
+async def test_sort_by_start_date_asc(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Sort by start_date ascending."""
+    response = await client.get("/trials/search?sort_by=start_date&order=asc")
+    assert response.status_code == 200
+    data = response.json()
+    dates = [t["start_date"] for t in data["data"] if t["start_date"] is not None]
+    assert dates == sorted(dates)
+
+
+@pytest.mark.asyncio
+async def test_sort_by_start_date_desc(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Sort by start_date descending."""
+    response = await client.get("/trials/search?sort_by=start_date&order=desc")
+    assert response.status_code == 200
+    data = response.json()
+    # NULL dates sort differently across DBs, so just check non-null ones are descending
+    dates = [t["start_date"] for t in data["data"] if t["start_date"] is not None]
+    assert dates == sorted(dates, reverse=True)
+
+
+@pytest.mark.asyncio
+async def test_sort_by_updated_at(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Sort by updated_at is accepted."""
+    response = await client.get("/trials/search?sort_by=updated_at&order=desc")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 5
+
+
+@pytest.mark.asyncio
+async def test_sort_by_invalid_column_ignored(client: AsyncClient, seed_trials: list[Trial]) -> None:
+    """Invalid sort_by is silently ignored (no error)."""
+    response = await client.get("/trials/search?sort_by=nonexistent")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["data"]) == 5

@@ -1,6 +1,7 @@
 """Trial API endpoints: search, get by ID."""
 
 import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -12,6 +13,18 @@ from app.schemas.trial import PaginationMeta, TrialListResponse, TrialResponse
 
 router = APIRouter(prefix="/trials", tags=["trials"])
 
+SORT_COLUMNS = {
+    "trial_id": Trial.trial_id,
+    "title": Trial.title,
+    "status": Trial.status,
+    "phase": Trial.phase,
+    "sponsor_name": Trial.sponsor_name,
+    "start_date": Trial.start_date,
+    "completion_date": Trial.completion_date,
+    "updated_at": Trial.updated_at,
+    "enrollment_number": Trial.enrollment_number,
+}
+
 
 @router.get("/search", response_model=TrialListResponse)
 async def search_trials(
@@ -20,10 +33,17 @@ async def search_trials(
     sponsor: str | None = Query(default=None),
     status: str | None = Query(default=None),
     phase: str | None = Query(default=None),
+    study_type: str | None = Query(default=None),
     updated_since: datetime.date | None = Query(default=None),
+    sort_by: str | None = Query(
+        default=None,
+        description="Sort by: trial_id, title, status, phase, sponsor_name, "
+        "start_date, completion_date, updated_at, enrollment_number",
+    ),
+    order: Literal["asc", "desc"] = Query(default="asc", description="Sort order"),
     session: AsyncSession = Depends(get_db),
 ) -> TrialListResponse:
-    """Search trials with pagination and optional filtering."""
+    """Search trials with pagination, filtering, and sorting."""
     query = select(Trial)
     count_query = select(func.count()).select_from(Trial)
 
@@ -36,9 +56,16 @@ async def search_trials(
     if phase:
         query = query.where(Trial.phase.ilike(f"%{phase}%"))
         count_query = count_query.where(Trial.phase.ilike(f"%{phase}%"))
+    if study_type:
+        query = query.where(Trial.study_type == study_type.upper())
+        count_query = count_query.where(Trial.study_type == study_type.upper())
     if updated_since:
         query = query.where(Trial.updated_at >= updated_since)
         count_query = count_query.where(Trial.updated_at >= updated_since)
+
+    if sort_by and sort_by in SORT_COLUMNS:
+        sort_col = SORT_COLUMNS[sort_by]
+        query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
 
     total = await session.scalar(count_query) or 0
     results = await session.scalars(query.offset(skip).limit(limit))

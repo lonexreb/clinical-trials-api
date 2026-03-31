@@ -3,7 +3,7 @@
 > **Purpose**: Track progress across sessions. Update `[ ]` → `[x]` as work completes.
 > Referenced from CLAUDE.md via `@GOALS.md`.
 >
-> **Timeline**: ~8–9 hours active coding over 4 days. Initial development took ~2h50m across 3 sessions; a fourth session (~5–6 hours on Mar 31, 2026) addressed detailed evaluation feedback from OpenAlex's CEO. Most elapsed time beyond coding was waiting on deploys, ingestion runs, and infrastructure.
+> **Timeline**: ~8–9 hours active coding over 4 days across 6 sessions. Initial development took ~2h50m across 4 sessions (Sessions 1–4); Session 5 (~5–6 hours on Mar 31, 2026) addressed detailed evaluation feedback from OpenAlex's CEO; Session 6 addressed all remaining schema and API gaps. Most elapsed time beyond coding was waiting on deploys, ingestion runs, and infrastructure.
 
 ## Success Definition
 A working end-to-end system that ingests real trial records from ClinicalTrials.gov, stores them in a clean extensible PostgreSQL database, and serves them to OpenAlex via a public API. Focus is a functional MVP — precision can be improved later.
@@ -131,6 +131,27 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 - [x] Addressed automated PR review comments from Codex, CodeRabbit, and Cursor Bugbot
 
 **Done when**: All evaluation feedback addressed, tests pass, docs consistent, PR merged.
+
+---
+
+## Session 6 — Schema Enrichment & Remaining Gaps (Mar 31, 2026)
+> Goal: Address every remaining concern from the evaluation — leave no stone unturned.
+
+- [x] Extracted `study_type` from CT.gov `designModule.studyType` (e.g., INTERVENTIONAL, OBSERVATIONAL)
+- [x] Extracted `eligibility_criteria` from CT.gov `eligibilityModule.eligibilityCriteria` (free text)
+- [x] Extracted `mesh_terms` from CT.gov `derivedSection.conditionBrowseModule.meshes` (list of MeSH term strings)
+- [x] Extracted `references` (DOIs/PMIDs/citations) from CT.gov `referencesModule.references` (JSONB array)
+- [x] Extracted `investigators` from CT.gov `contactsLocationsModule.overallOfficials` (JSONB array)
+- [x] Added `source` field (TEXT, default "clinicaltrials.gov") for multi-registry readiness
+- [x] Added `sort_by` + `order` (asc/desc) query parameters to `/trials/search`
+- [x] Added `study_type` filter to `/trials/search` (exact match)
+- [x] Added bounded retry logic to batch loader (3 attempts, exponential backoff: 1s, 2s, 4s)
+- [x] Fixed `render.yaml` cron BATCH_SIZE from 50 → 500 (internal connection, not subject to external timeouts)
+- [x] Migration 004: `study_type`, `eligibility_criteria`, `mesh_terms`, `references`, `investigators`, `source`
+- [x] 20 new tests (95 total): parser extraction for all new fields, API enrichment response, study_type filter, sorting asc/desc/invalid, null fields
+- [x] Updated all documentation (README, CLAUDE.md, GOALS.md, LEARNING.md) with new schema, test counts, and features
+
+**Done when**: All evaluation concerns addressed, 95 tests pass, docs consistent.
 
 ---
 

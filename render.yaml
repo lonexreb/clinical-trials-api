@@ -25,6 +25,7 @@ services:
         value: INFO
 
   # Daily ingestion cron job — runs at 2 AM UTC, fetches new/updated trials
+  # Uses internal DB connection (same Render network), so batch size 500 is safe.
   - type: cron
     name: clinical-trials-etl-ingest
     runtime: docker
@@ -39,6 +40,6 @@ services:
       - key: CT_GOV_BASE_URL
         value: https://clinicaltrials.gov/api/v2/studies
       - key: BATCH_SIZE
-        value: "50"
+        value: "500"
       - key: LOG_LEVEL
         value: INFO

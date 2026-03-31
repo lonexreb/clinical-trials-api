@@ -23,10 +23,16 @@ async def test_export_ndjson_format(client: AsyncClient, seed_trials: list[Trial
         assert "trial_id" in parsed
         assert "title" in parsed
         assert "status" in parsed
+        assert "study_type" in parsed
         assert "interventions" in parsed
         assert "secondary_outcomes" in parsed
         assert "conditions" in parsed
+        assert "eligibility_criteria" in parsed
+        assert "mesh_terms" in parsed
+        assert "references" in parsed
+        assert "investigators" in parsed
         assert "locations" in parsed
+        assert "source" in parsed
 
 
 @pytest.mark.asyncio
@@ -69,10 +75,16 @@ async def test_export_csv_header_fields(client: AsyncClient, seed_trials: list[T
     assert "status" in header
     assert "sponsor_name" in header
     assert "phase" in header
+    assert "study_type" in header
     assert "interventions" in header
     assert "secondary_outcomes" in header
     assert "conditions" in header
+    assert "eligibility_criteria" in header
+    assert "mesh_terms" in header
+    assert "references" in header
+    assert "investigators" in header
     assert "locations" in header
+    assert "source" in header
 
 
 @pytest.mark.asyncio

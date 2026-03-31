@@ -187,9 +187,9 @@ The path from working locally to a production API with 578K trials was the most 
 ## Local Development Results
 
 ### Test Suite
-- **75 tests, all passing** in <1 second using SQLite in-memory (`aiosqlite`)
-- Coverage: parser (33 tests), API endpoints (17 tests), ingestion (8 tests), export (8 tests), loader (6 tests), health (2 tests)
-- Includes tests for: `updated_since` filtering, exact status matching (RECRUITING ≠ ACTIVE_NOT_RECRUITING), conditions extraction/null/empty/missing
+- **95 tests, all passing** in <1 second using SQLite in-memory (`aiosqlite`)
+- Coverage: parser (49 tests), API endpoints (24 tests), ingestion (8 tests), export (8 tests), loader (6 tests), health (2 tests)
+- Includes tests for: `updated_since` filtering, exact status matching, conditions, study_type, eligibility_criteria, mesh_terms, references, investigators, source, sorting/ordering
 - Tests use dependency injection to swap the DB session — no external services required
 - Test isolation: each test gets a fresh in-memory SQLite database via `conftest.py` fixtures
 
@@ -245,7 +245,7 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 - **API integration**: Claude Code wrote the ClinicalTrials.gov API v2 integration (pagination, date filtering, nested JSON parsing) with minimal guidance — I described the API structure and it built `ingestion.py` and `parser.py` end-to-end.
 - **Debugging deployment issues**: When Fly.io failed (asyncpg SSL incompatibility), Claude Code diagnosed the root cause from error logs and recommended switching to Render. When `stream_scalars()` returned 0 bytes on Render, it identified the server-side cursor issue and suggested batched offset/limit reads.
 - **Schema evolution**: Claude Code designed the migration from flat columns to JSONB arrays, including the data migration SQL in `002_jsonb_arrays_and_secondary_outcomes.py`.
-- **Test generation**: 75 tests across 6 files were written with Claude Code — parser edge cases, API integration tests with httpx AsyncClient, loader upsert verification, and post-evaluation tests for `updated_since`, exact status matching, and conditions extraction.
+- **Test generation**: 95 tests across 6 files were written with Claude Code — parser edge cases, API integration tests with httpx AsyncClient, loader upsert verification, and post-evaluation tests for `updated_since`, exact status matching, conditions, study_type, eligibility, MeSH terms, references, investigators, source, and sorting.
 - **Documentation**: CLAUDE.md, LEARNING.md, GOALS.md, README.md, DEMO.md, and TEST.md were all maintained collaboratively. Claude Code updated docs with each code change as instructed.
 - **Code review**: Used Claude Code to audit every claim in DEMO.md against actual code — verified upsert logic, incremental filters, export batching, compression middleware, and parallel ingestion all exist and work as documented.
 
@@ -296,6 +296,30 @@ The biggest miss was the `updated_since` endpoint — a requirement that was cle
 
 ---
 
+## Schema Enrichment & Remaining Gaps (Mar 31, 2026, continued)
+
+After fixing the critical evaluation gaps, went back through the full evaluation to address every remaining concern — "leave no stone unturned."
+
+### What was added:
+1. **`study_type`** (TEXT) — extracted from `designModule.studyType`. Values like INTERVENTIONAL, OBSERVATIONAL, EXPANDED_ACCESS. Added as a search filter with exact matching.
+2. **`eligibility_criteria`** (TEXT) — free text from `eligibilityModule.eligibilityCriteria`. Contains inclusion/exclusion criteria.
+3. **`mesh_terms`** (JSONB list of strings) — extracted from `derivedSection.conditionBrowseModule.meshes`. These are standardized Medical Subject Headings useful for matching trials to works in OpenAlex.
+4. **`references`** (JSONB array of dicts) — from `referencesModule.references`. Contains PMIDs, DOIs, and citation text — critical for linking trials to publications.
+5. **`investigators`** (JSONB array of dicts) — from `contactsLocationsModule.overallOfficials`. Contains PI names, roles, and affiliations.
+6. **`source`** field (TEXT, default "clinicaltrials.gov") — registry of origin for multi-registry readiness.
+7. **Sorting/ordering** — `sort_by` and `order` (asc/desc) query parameters on `/trials/search`. Supports 9 sortable columns.
+8. **Bounded retry logic** — batch loader now retries failed batches up to 3 times with exponential backoff (1s, 2s, 4s) before giving up.
+9. **render.yaml cron BATCH_SIZE fixed** — changed from 50 to 500 for the cron job, which uses internal DB connections.
+10. **20 new tests** (95 total) covering all new fields, sorting, study_type filter, null handling.
+
+### Why this matters for OpenAlex:
+- **MeSH terms + references** are the two most important fields for OpenAlex's matching pipeline — linking clinical trials to academic works requires standardized disease terms and publication DOIs/PMIDs.
+- **Sorting by `updated_at` descending** lets OpenAlex fetch the most recently modified trials first when polling for daily updates.
+- **Source field** prepares for the eventual case where OpenAlex ingests trials from multiple registries (EU CTR, ISRCTN, etc.).
+- **Retry logic** makes the ingestion pipeline more resilient to transient DB connection failures during large batch loads.
+
+---
+
 ## Key Architectural Decisions
 
 | Decision | Rationale |
@@ -312,6 +336,9 @@ The biggest miss was the `updated_since` endpoint — a requirement that was cle
 | Keyset pagination for export | Consistent O(1) performance per batch regardless of depth, replaces OFFSET |
 | `defer(raw_data)` in export query | Excludes 10-50KB JSONB blobs the response doesn't need |
 | `filter.advanced` for incremental sync | Only fetch updated studies instead of re-ingesting everything |
+| MeSH terms from `derivedSection` | Standardized terms for matching trials to works, not raw condition strings |
+| `source` field with default | Multi-registry readiness without breaking existing data |
+| Bounded retry (3 attempts, backoff) | Failed batches get retried before being counted as errors |
 | Parallel sharding by year range | 6x throughput vs sequential; CT.gov rate limits are per-connection |
 | Background job system with TUI monitor | Allows triggering full ingestion via API without waiting for HTTP response to complete |
 | Upgraded Render DB to basic-1gb (10GB) | Starter plan storage limits prevented loading the full ~500K dataset |

@@ -1,5 +1,6 @@
 """Batch load parsed trial data into PostgreSQL."""
 
+import asyncio
 import logging
 
 from sqlalchemy import delete, func
@@ -10,20 +11,29 @@ from app.schemas.trial import TrialCreate
 
 logger = logging.getLogger(__name__)
 
+MAX_RETRIES = 3
+RETRY_BACKOFF_SECONDS = [1, 2, 4]
+
 # Columns to update on conflict (everything except id, trial_id, created_at)
 UPDATE_COLUMNS = [
     "title",
     "phase",
     "status",
     "sponsor_name",
+    "study_type",
     "interventions",
     "primary_outcomes",
     "secondary_outcomes",
     "conditions",
+    "eligibility_criteria",
+    "mesh_terms",
+    "references",
+    "investigators",
     "start_date",
     "completion_date",
     "locations",
     "enrollment_number",
+    "source",
     "raw_data",
 ]
 
@@ -77,16 +87,32 @@ async def load_trials(
     for i in range(0, len(trials), batch_size):
         batch = trials[i : i + batch_size]
         batch_num = i // batch_size + 1
-        try:
-            if session_factory is not None:
-                async with session_factory() as batch_session:
-                    count = await upsert_trials_batch(batch_session, batch)
-            else:
-                count = await upsert_trials_batch(session, batch)
-            total_loaded += count
-            logger.info("Batch %d: loaded %d trials", batch_num, count)
-        except Exception:
+        succeeded = False
+        for attempt in range(MAX_RETRIES):
+            try:
+                if session_factory is not None:
+                    async with session_factory() as batch_session:
+                        count = await upsert_trials_batch(batch_session, batch)
+                else:
+                    count = await upsert_trials_batch(session, batch)
+                total_loaded += count
+                logger.info("Batch %d: loaded %d trials", batch_num, count)
+                succeeded = True
+                break
+            except Exception:
+                # Roll back the failed transaction so the session is reusable
+                if session_factory is None:
+                    await session.rollback()
+                backoff = RETRY_BACKOFF_SECONDS[min(attempt, len(RETRY_BACKOFF_SECONDS) - 1)]
+                if attempt < MAX_RETRIES - 1:
+                    logger.warning(
+                        "Batch %d failed (attempt %d/%d), retrying in %ds...",
+                        batch_num, attempt + 1, MAX_RETRIES, backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    logger.exception("Batch %d failed after %d attempts", batch_num, MAX_RETRIES)
+        if not succeeded:
             total_errors += len(batch)
-            logger.exception("Batch %d failed", batch_num)
 
     return total_loaded, total_errors

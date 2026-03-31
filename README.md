@@ -123,8 +123,17 @@ curl "http://localhost:8000/trials/search?phase=PHASE3"
 # Combined filters
 curl "http://localhost:8000/trials/search?sponsor=novartis&status=completed&limit=20"
 
+# Filter by study type
+curl "http://localhost:8000/trials/search?study_type=interventional"
+
 # Poll for recently updated trials (for daily sync)
 curl "http://localhost:8000/trials/search?updated_since=2026-03-30"
+
+# Sort results by start date (descending)
+curl "http://localhost:8000/trials/search?sort_by=start_date&order=desc"
+
+# Sort by most recently updated
+curl "http://localhost:8000/trials/search?sort_by=updated_at&order=desc&limit=20"
 ```
 
 Response:
@@ -137,14 +146,20 @@ Response:
       "phase": "PHASE3",
       "status": "RECRUITING",
       "sponsor_name": "Pfizer",
+      "study_type": "INTERVENTIONAL",
       "interventions": [{"type": "DRUG", "name": "Drug X"}],
       "primary_outcomes": [{"measure": "Overall Survival", "description": "Time from..."}],
       "secondary_outcomes": null,
       "conditions": ["Lung Cancer", "Non-Small Cell Lung Cancer"],
+      "eligibility_criteria": "Inclusion: Age >= 18\nExclusion: Prior chemotherapy",
+      "mesh_terms": ["Lung Neoplasms", "Carcinoma, Non-Small-Cell Lung"],
+      "references": [{"pmid": "12345678", "type": "RESULT", "citation": "Smith et al."}],
+      "investigators": [{"name": "Dr. Smith", "role": "PRINCIPAL_INVESTIGATOR"}],
       "start_date": "2023-01-15",
       "completion_date": "2025-12-31",
       "locations": [{"facility": "Hospital A", "city": "Boston", "country": "United States"}],
       "enrollment_number": 500,
+      "source": "clinicaltrials.gov",
       "created_at": "2024-01-01T00:00:00",
       "updated_at": "2024-01-01T00:00:00"
     }
@@ -286,14 +301,20 @@ The `trials` table stores both structured columns for fast queries and JSONB arr
 | `phase` | TEXT (indexed) | e.g., PHASE1, PHASE2 |
 | `status` | TEXT (indexed) | e.g., RECRUITING, COMPLETED |
 | `sponsor_name` | TEXT (indexed) | Lead sponsor name |
+| `study_type` | TEXT | e.g., INTERVENTIONAL, OBSERVATIONAL |
 | `interventions` | JSONB | Full array of intervention dicts |
 | `primary_outcomes` | JSONB | Full array of primary outcome dicts |
 | `secondary_outcomes` | JSONB | Full array of secondary outcome dicts |
 | `conditions` | JSONB | List of condition/disease strings |
+| `eligibility_criteria` | TEXT | Inclusion/exclusion criteria (free text) |
+| `mesh_terms` | JSONB | MeSH terms from derived section |
+| `references` | JSONB | Linked publications, PMIDs, DOIs |
+| `investigators` | JSONB | Overall officials / principal investigators |
 | `start_date` | DATE | Study start date |
 | `completion_date` | DATE | Expected/actual completion |
 | `locations` | JSONB | Full array of location dicts |
 | `enrollment_number` | INTEGER | Target/actual enrollment |
+| `source` | TEXT | Registry of origin (default: clinicaltrials.gov) |
 | `raw_data` | JSONB | Complete original CT.gov record |
 
 Indexes: `trial_id` (unique), `sponsor_name`, `status`, `phase`, `updated_at`.
