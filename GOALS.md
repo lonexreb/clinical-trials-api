@@ -3,7 +3,7 @@
 > **Purpose**: Track progress across sessions. Update `[ ]` → `[x]` as work completes.
 > Referenced from CLAUDE.md via `@GOALS.md`.
 >
-> **Timeline**: ~2hr 50min active coding over 3 days. Sessions below were planned as 3-hour blocks, but actual coding was faster — most elapsed time was waiting on deploys, ingestion runs, and infrastructure. The approach was to research the CT.gov API first, get something working fast, then improve iteratively.
+> **Timeline**: ~8–9 hours active coding over 4 days. Initial development took ~2h50m across 3 sessions; a fourth session (~5–6 hours on Mar 31, 2026) addressed detailed evaluation feedback from OpenAlex's CEO. Most elapsed time beyond coding was waiting on deploys, ingestion runs, and infrastructure.
 
 ## Success Definition
 A working end-to-end system that ingests real trial records from ClinicalTrials.gov, stores them in a clean extensible PostgreSQL database, and serves them to OpenAlex via a public API. Focus is a functional MVP — precision can be improved later.
@@ -115,6 +115,22 @@ A working end-to-end system that ingests real trial records from ClinicalTrials.
 - [x] Live TUI monitor (`scripts/monitor_ingestion.py`) for tracking background jobs
 - [x] Upgraded Render Postgres to basic-1gb plan with 10GB disk
 - [x] Fixed DB connection leak: engine dispose + pool limits for background ingestion
+
+---
+
+## Session 5 — Post-Evaluation Fixes (Mar 31, 2026, ~5–6 hours)
+> Goal: Address all feedback from OpenAlex CEO's detailed evaluation (graded B+, decision: Advance).
+
+- [x] Added `updated_since` date filter to `/trials/search` for OpenAlex daily polling
+- [x] Replaced OFFSET pagination with keyset pagination (`WHERE id > last_id`) in export endpoint
+- [x] Changed status filter from ILIKE substring to exact match (preserves `ix_trials_status` index)
+- [x] Extracted `conditions` from CT.gov `conditionsModule` — new JSONB column + parser + schema + migration 003
+- [x] Added `ix_trials_updated_at` index via `CREATE INDEX CONCURRENTLY` (non-blocking on 578K rows)
+- [x] Added 7 new tests (75 total): status exact match, updated_since filtering, conditions parsing
+- [x] Updated all documentation (README, CLAUDE.md, LEARNING.md, GOALS.md) with corrected timeline and post-evaluation work
+- [x] Addressed automated PR review comments from Codex, CodeRabbit, and Cursor Bugbot
+
+**Done when**: All evaluation feedback addressed, tests pass, docs consistent, PR merged.
 
 ---
 

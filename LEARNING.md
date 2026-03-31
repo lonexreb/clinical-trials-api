@@ -7,7 +7,8 @@
 ## Development Timeline & Approach
 
 ### Time Breakdown
-- **Active coding time**: ~2 hours 50 minutes, distributed over 3 days
+- **Initial development**: ~8-9 hours of active work over 3 days (Mar 26-28). Originally reported as ~2hr 50min, which undercounted debugging, log reading, documentation, and deployment troubleshooting. The "active coding" framing was too narrow — it excluded real work that wasn't fingers-on-keyboard coding.
+- **Post-evaluation fixes**: ~1 hour on Mar 31, addressing gaps identified in the OpenAlex CEO's evaluation (see Post-Evaluation Improvements section below).
 - **Major time consumer**: Waiting — Render deployments, database provisioning, full ingestion runs (578K records across 500+ pages), a 12-hour storage lockout on the starter-plan database, and blueprint redeployments after the lockout
 - **Research time**: Understanding ClinicalTrials.gov API v2 before writing any ingestion code — the nested `protocolSection` JSON structure, token-based pagination model, inconsistent date formats, and `filter.advanced` query capabilities
 
@@ -186,8 +187,9 @@ The path from working locally to a production API with 578K trials was the most 
 ## Local Development Results
 
 ### Test Suite
-- **68 tests, all passing** in 0.24 seconds using SQLite in-memory (`aiosqlite`)
-- Coverage: parser (29 tests), API endpoints (15 tests), ingestion (8 tests), export (8 tests), loader (6 tests), health (2 tests)
+- **75 tests, all passing** in <1 second using SQLite in-memory (`aiosqlite`)
+- Coverage: parser (33 tests), API endpoints (17 tests), ingestion (8 tests), export (8 tests), loader (6 tests), health (2 tests)
+- Includes tests for: `updated_since` filtering, exact status matching (RECRUITING ≠ ACTIVE_NOT_RECRUITING), conditions extraction/null/empty/missing
 - Tests use dependency injection to swap the DB session — no external services required
 - Test isolation: each test gets a fresh in-memory SQLite database via `conftest.py` fixtures
 
@@ -243,7 +245,7 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 - **API integration**: Claude Code wrote the ClinicalTrials.gov API v2 integration (pagination, date filtering, nested JSON parsing) with minimal guidance — I described the API structure and it built `ingestion.py` and `parser.py` end-to-end.
 - **Debugging deployment issues**: When Fly.io failed (asyncpg SSL incompatibility), Claude Code diagnosed the root cause from error logs and recommended switching to Render. When `stream_scalars()` returned 0 bytes on Render, it identified the server-side cursor issue and suggested batched offset/limit reads.
 - **Schema evolution**: Claude Code designed the migration from flat columns to JSONB arrays, including the data migration SQL in `002_jsonb_arrays_and_secondary_outcomes.py`.
-- **Test generation**: 68 tests across 6 files were written with Claude Code — parser edge cases, API integration tests with httpx AsyncClient, and loader upsert verification.
+- **Test generation**: 75 tests across 6 files were written with Claude Code — parser edge cases, API integration tests with httpx AsyncClient, loader upsert verification, and post-evaluation tests for `updated_since`, exact status matching, and conditions extraction.
 - **Documentation**: CLAUDE.md, LEARNING.md, GOALS.md, README.md, DEMO.md, and TEST.md were all maintained collaboratively. Claude Code updated docs with each code change as instructed.
 - **Code review**: Used Claude Code to audit every claim in DEMO.md against actual code — verified upsert logic, incremental filters, export batching, compression middleware, and parallel ingestion all exist and work as documented.
 
@@ -258,6 +260,39 @@ This entire project was built collaboratively with Claude Code (CLI), using it a
 - **Initial over-engineering**: Early iterations had manual gzip in export generators and `stream_scalars()` for streaming — both were replaced with simpler solutions (GZipMiddleware, batched reads). Claude Code could have started simpler.
 - **`/ingest` vs CLI gap**: The `/ingest` endpoint doesn't support `--since` (only `year_start`/`year_end`). The daily cron uses the CLI. This asymmetry was caught late during code review — should have been designed upfront.
 - **Full dataset loaded**: After upgrading to basic-1gb plan, all 578,109 trials were ingested via `POST /ingest/all` — 12 shards, zero errors.
+
+---
+
+## Post-Evaluation Improvements (Mar 31, 2026)
+
+After submitting the take-home, the OpenAlex CEO (Jason) had the submission evaluated using a detailed rubric and Claude-based grading. The evaluation was thorough and fair — it graded the project B+ with a decision to advance, but identified several legitimate gaps. I received the evaluation via the recruiter and was asked to respond directly to each point.
+
+### What the evaluation identified:
+1. **No `updated_since` API endpoint** — the incremental sync capability existed in the CLI (`--since yesterday`) but was never surfaced as a query parameter on `/trials/search`. This was the single most important endpoint for OpenAlex's daily polling use case.
+2. **OFFSET pagination in export degrades at depth** — at 578K records, later export batches get progressively slower as Postgres scans and discards rows.
+3. **ILIKE status matching** — `status=RECRUITING` incorrectly matched `ACTIVE_NOT_RECRUITING` because all filters used the same ILIKE substring pattern.
+4. **Missing conditions extraction** — conditions were present in `raw_data` but not surfaced as a queryable column.
+5. **Timeline underreported** — the "~2hr 50min" claim was too narrow. Realistic estimate is 8-9 hours.
+
+### What was fixed (same day):
+1. **Added `updated_since` query parameter** to `/trials/search` — filters on `Trial.updated_at >= date`. OpenAlex can now poll daily for recently updated trials without re-exporting everything.
+2. **Replaced OFFSET with keyset pagination** in export — `WHERE id > last_id ORDER BY id LIMIT 1000` gives consistent O(1) performance per batch regardless of depth.
+3. **Changed status filter to exact match** — `Trial.status == status.upper()` instead of ILIKE substring. Preserves `ix_trials_status` B-tree index usage. Sponsor and phase retain ILIKE for legitimate substring use cases.
+4. **Extracted conditions** from CT.gov `conditionsModule` into a new `conditions` JSONB column (list of strings). Added migration 003, updated parser, model, schema, loader, and export fields.
+5. **Added `ix_trials_updated_at` index** using `CREATE INDEX CONCURRENTLY` (via `autocommit_block`) to avoid blocking writes on the 578K-row table during deploy.
+6. **7 new tests** added (75 total): `updated_since` filtering, exact status matching, conditions in parser (extracted, missing, empty, null module), conditions in API response.
+7. **Updated all documentation** — timeline corrected across all files, new features documented.
+
+### PR review feedback addressed:
+The PR received automated reviews from Codex, CodeRabbit, and Cursor Bugbot. Three fixes were made:
+- Replaced `func.upper(Trial.status)` with `Trial.status == status.upper()` to preserve index usage (Codex)
+- Added `ix_trials_updated_at` index for the new `updated_since` filter (Codex + CodeRabbit)
+- Used `CREATE INDEX CONCURRENTLY` to avoid write-blocking during deploy (CodeRabbit)
+
+One suggestion was defended: Cursor Bugbot flagged the status comparison as "only half case-insensitive" since it relies on CT.gov always storing uppercase statuses. This is intentional — the alternative (`func.upper()`) defeats the index, and normalizing at the parser level is the correct place to handle mixed-case data if it ever appears.
+
+### Takeaway:
+The biggest miss was the `updated_since` endpoint — a requirement that was clearly stated in the brief but not carried through to the API. The underlying capability existed (CLI `--since`), but the final verification pass against the brief's requirements was incomplete. Tooling can help with speed, but it doesn't replace judgment. The places where my judgment fell short are the places highlighted in the evaluation.
 
 ---
 
